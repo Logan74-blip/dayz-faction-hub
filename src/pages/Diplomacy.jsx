@@ -1,0 +1,119 @@
+import { useEffect, useState } from 'react'
+import { supabase } from '../supabaseClient'
+import { Shield, Swords, Package } from 'lucide-react'
+
+const TYPES = [
+  { value:'nap', label:'Non-Aggression Pact', icon:Shield, color:'var(--green)' },
+  { value:'war', label:'War Declaration', icon:Swords, color:'var(--red)' },
+  { value:'trade', label:'Trade Offer', icon:Package, color:'var(--yellow)' },
+]
+
+export default function Diplomacy({ session }) {
+  const [faction, setFaction] = useState(null)
+  const [allFactions, setAllFactions] = useState([])
+  const [records, setRecords] = useState([])
+  const [form, setForm] = useState({ target:'', type:'nap', terms:'' })
+  const userId = session.user.id
+
+  useEffect(() => { loadData() }, [])
+
+  async function loadData() {
+    const { data: mem } = await supabase.from('faction_members').select('*, factions(*)').eq('user_id', userId).maybeSingle()
+    if (!mem?.factions) return
+    setFaction(mem.factions)
+
+    const { data: facs } = await supabase.from('factions').select('id,name').neq('id', mem.factions.id)
+    setAllFactions(facs || [])
+
+    const { data: recs } = await supabase.from('diplomacy')
+      .select('*, faction_a_info:factions!diplomacy_faction_a_fkey(name), faction_b_info:factions!diplomacy_faction_b_fkey(name)')
+      .or(`faction_a.eq.${mem.factions.id},faction_b.eq.${mem.factions.id}`)
+      .order('created_at', { ascending: false })
+    setRecords(recs || [])
+  }
+
+  async function submitDiplomacy() {
+    if (!form.target || !faction) return
+    const { error } = await supabase.from('diplomacy').insert({
+      faction_a: faction.id,
+      faction_b: form.target,
+      type: form.type,
+      terms: form.terms,
+      status: 'pending',
+      created_by: userId
+    })
+    if (!error) { setForm({ target:'', type:'nap', terms:'' }); loadData() }
+  }
+
+  async function updateStatus(id, status) {
+    await supabase.from('diplomacy').update({ status }).eq('id', id)
+    loadData()
+  }
+
+  function getTypeMeta(type) { return TYPES.find(t => t.value === type) || TYPES[0] }
+
+  const statusTag = { pending:'tag-yellow', active:'tag-green', rejected:'tag-red', expired:'tag-red' }
+
+  return (
+    <div style={{ maxWidth:900, margin:'40px auto', padding:'0 24px', display:'flex', flexDirection:'column', gap:'24px' }}>
+      <div>
+        <h1 style={{ fontFamily:'Share Tech Mono', fontSize:'24px', color:'var(--green)' }}>DIPLOMACY BOARD</h1>
+        <p style={{ color:'var(--muted)', marginTop:'4px' }}>Negotiate pacts, declare war, or offer trades with other factions</p>
+      </div>
+
+      {faction && allFactions.length > 0 && (
+        <div className="card" style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
+          <h3 style={{ fontWeight:700, fontSize:'16px' }}>Send Diplomacy</h3>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
+            <select value={form.target} onChange={e => setForm(f => ({...f, target:e.target.value}))}>
+              <option value="">Select target faction...</option>
+              {allFactions.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
+            <select value={form.type} onChange={e => setForm(f => ({...f, type:e.target.value}))}>
+              {TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </div>
+          <textarea placeholder="Terms or message (optional)..." value={form.terms} onChange={e => setForm(f => ({...f, terms:e.target.value}))} rows={2} />
+          <button className="btn btn-green" style={{ alignSelf:'flex-start' }} onClick={submitDiplomacy}>Send</button>
+        </div>
+      )}
+
+      {allFactions.length === 0 && faction && (
+        <div className="card" style={{ textAlign:'center', color:'var(--muted)', padding:'32px' }}>
+          No other factions on this server yet. Diplomacy opens up once more factions join.
+        </div>
+      )}
+
+      <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+        {records.length === 0 && <p style={{ color:'var(--muted)', textAlign:'center', padding:'40px' }}>No diplomacy records yet.</p>}
+        {records.map(rec => {
+          const meta = getTypeMeta(rec.type)
+          const Icon = meta.icon
+          const isReceiver = rec.faction_b === faction?.id
+          const isPending = rec.status === 'pending'
+          return (
+            <div key={rec.id} className="card" style={{ display:'flex', gap:'16px', alignItems:'flex-start', borderLeft:`3px solid ${meta.color}` }}>
+              <Icon size={20} color={meta.color} style={{ marginTop:'2px', flexShrink:0 }} />
+              <div style={{ flex:1 }}>
+                <div style={{ display:'flex', gap:'10px', alignItems:'center', flexWrap:'wrap', marginBottom:'4px' }}>
+                  <strong>{rec.faction_a_info?.name}</strong>
+                  <span style={{ color:'var(--muted)', fontSize:'13px' }}>→</span>
+                  <strong>{rec.faction_b_info?.name}</strong>
+                  <span className={`tag ${statusTag[rec.status] || 'tag-yellow'}`}>{rec.status}</span>
+                  <span style={{ color:meta.color, fontSize:'13px' }}>{meta.label}</span>
+                </div>
+                {rec.terms && <p style={{ color:'var(--muted)', fontSize:'14px' }}>{rec.terms}</p>}
+                {isPending && isReceiver && (
+                  <div style={{ display:'flex', gap:'8px', marginTop:'10px' }}>
+                    <button className="btn btn-green" style={{ fontSize:'13px', padding:'5px 14px' }} onClick={() => updateStatus(rec.id, 'active')}>Accept</button>
+                    <button className="btn btn-red" style={{ fontSize:'13px', padding:'5px 14px' }} onClick={() => updateStatus(rec.id, 'rejected')}>Reject</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
