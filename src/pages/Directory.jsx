@@ -94,7 +94,12 @@ export default function Directory({ session }) {
           >
             <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
               <Server size={15} color="var(--green)" />
-              <span style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'14px' }}>{server}</span>
+              <span
+  onClick={e => { e.stopPropagation(); navigate(`/server/${encodeURIComponent(server)}`) }}
+  style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'14px', cursor:'pointer', textDecoration:'underline' }}
+>
+  {server}
+</span>
               <span style={{ background:'#14532d', color:'var(--green)', padding:'2px 8px', borderRadius:'999px', fontSize:'12px' }}>
                 {grouped[server].length} faction{grouped[server].length !== 1 ? 's' : ''}
               </span>

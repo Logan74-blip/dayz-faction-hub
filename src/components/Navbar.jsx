@@ -1,18 +1,22 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../supabaseClient'
-import { Map, Package, Shield, LayoutDashboard, LogOut, Sword, Swords, Settings, Globe, Bell, Megaphone, Trophy, ShoppingBag, Target, Activity, Star, UserPlus } from 'lucide-react'
+import { Map, Package, Shield, LayoutDashboard, LogOut, Sword, Swords, Settings, Globe, Bell, Megaphone, Trophy, ShoppingBag, Target, Activity, Star, UserPlus, MessageSquare, Flame, Network, Calendar, Server } from 'lucide-react'
 
 const links = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/map', label: 'War Map', icon: Map },
   { to: '/raids', label: 'Raids', icon: Sword },
+  { to: '/warroom', label: 'War Room', icon: Flame },
   { to: '/announcements', label: 'Announcements', icon: Megaphone },
   { to: '/eventlog', label: 'Event Log', icon: Activity },
   { to: '/bounties', label: 'Bounties', icon: Target },
   { to: '/trading', label: 'Trading', icon: ShoppingBag },
   { to: '/resources', label: 'Resources', icon: Package },
   { to: '/diplomacy', label: 'Diplomacy', icon: Shield },
+  { to: '/messages', label: 'Messages', icon: MessageSquare },
+  { to: '/alliance-network', label: 'Alliances', icon: Network },
+  { to: '/server-calendar', label: 'Server Events', icon: Calendar },
   { to: '/achievements', label: 'Achievements', icon: Star },
   { to: '/leaderboard', label: 'Leaderboard', icon: Trophy },
   { to: '/versus', label: 'F vs F', icon: Swords },
@@ -24,14 +28,15 @@ const links = [
 export default function Navbar({ session }) {
   const navigate = useNavigate()
   const avatar = session?.user?.user_metadata?.avatar_url
-  const name = session?.user?.user_metadata?.full_name || session?.user?.email
   const [notifications, setNotifications] = useState([])
   const [showBell, setShowBell] = useState(false)
+  const [unreadMessages, setUnreadMessages] = useState(0)
   const bellRef = useRef(null)
   const userId = session.user.id
 
   useEffect(() => {
     loadNotifications()
+    loadUnreadMessages()
     saveProfile()
     const channel = supabase.channel('notifications')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
@@ -59,6 +64,13 @@ export default function Navbar({ session }) {
   async function loadNotifications() {
     const { data } = await supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(20)
     setNotifications(data || [])
+  }
+
+  async function loadUnreadMessages() {
+    const { data: mem } = await supabase.from('faction_members').select('faction_id').eq('user_id', userId).maybeSingle()
+    if (!mem) return
+    const { count } = await supabase.from('faction_messages').select('id', { count:'exact' }).eq('to_faction_id', mem.faction_id).eq('read', false)
+    setUnreadMessages(count || 0)
   }
 
   async function markRead(id) {
@@ -99,9 +111,15 @@ export default function Navbar({ session }) {
               color: isActive ? 'var(--green)' : 'var(--muted)',
               background: isActive ? '#14532d33' : 'transparent',
               transition: 'all 0.15s', whiteSpace: 'nowrap', flexShrink: 0,
-              textDecoration: 'none'
+              textDecoration: 'none', position: 'relative'
             })}>
-              <Icon size={12} /> {label}
+              <Icon size={12} />
+              {label}
+              {to === '/messages' && unreadMessages > 0 && (
+                <span style={{ background:'var(--red)', color:'#fff', borderRadius:'999px', fontSize:'9px', padding:'1px 5px', fontWeight:700 }}>
+                  {unreadMessages}
+                </span>
+              )}
             </NavLink>
           ))}
         </div>

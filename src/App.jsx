@@ -19,6 +19,11 @@ import FactionProfile from './pages/FactionProfile'
 import FactionVsFaction from './pages/FactionVsFaction'
 import Achievements from './pages/Achievements'
 import JoinRequests from './pages/JoinRequests'
+import ServerPage from './pages/ServerPage'
+import Messages from './pages/Messages'
+import WarRoom from './pages/WarRoom'
+import AllianceNetwork from './pages/AllianceNetwork'
+import ServerCalendar from './pages/ServerCalendar'
 import Navbar from './components/Navbar'
 import ProtectedRoute from './components/ProtectedRoute'
 import ActivityTracker from './components/ActivityTracker'
@@ -61,6 +66,11 @@ export default function App() {
         <Route path="/versus" element={<ProtectedRoute session={session}><FactionVsFaction session={session} /></ProtectedRoute>} />
         <Route path="/achievements" element={<ProtectedRoute session={session}><Achievements session={session} /></ProtectedRoute>} />
         <Route path="/join-requests" element={<ProtectedRoute session={session}><JoinRequests session={session} /></ProtectedRoute>} />
+        <Route path="/server/:name" element={<ProtectedRoute session={session}><ServerPage session={session} /></ProtectedRoute>} />
+        <Route path="/messages" element={<ProtectedRoute session={session}><Messages session={session} /></ProtectedRoute>} />
+        <Route path="/warroom" element={<ProtectedRoute session={session}><WarRoom session={session} /></ProtectedRoute>} />
+        <Route path="/alliance-network" element={<ProtectedRoute session={session}><AllianceNetwork session={session} /></ProtectedRoute>} />
+        <Route path="/server-calendar" element={<ProtectedRoute session={session}><ServerCalendar session={session} /></ProtectedRoute>} />
       </Routes>
     </>
   )
