@@ -1,4 +1,9 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect(() => {
+  setMapLoaded(false)
+  setMapError(false)
+  setShowTopo(false)
+  console.log('Map image path:', selectedMap.image)
+}, [selectedMap])
 import { supabase } from '../supabaseClient'
 
 const MAPS = [
@@ -6,25 +11,22 @@ const MAPS = [
     id: 'chernarus',
     name: 'Chernarus',
     image: '/chernarus.jpg',
+    topo: '/chernarus-top.jpg',
     fallback: null,
-    width: 15360,
-    height: 15360,
   },
   {
     id: 'livonia',
     name: 'Livonia',
     image: '/livonia.jpg',
+    topo: null,
     fallback: null,
-    width: 8192,
-    height: 8192,
   },
   {
     id: 'sakhal',
     name: 'Sakhal',
-    image: null,
+    image: '/sakhal.jpg',
+    topo: null,
     fallback: null,
-    width: 8192,
-    height: 8192,
   },
 ]
 
@@ -56,6 +58,7 @@ export default function WarMap({ session }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
   const userId = session.user.id
+  const [showTopo, setShowTopo] = useState(false)
 
   useEffect(() => { loadFaction() }, [])
 useEffect(() => { 
@@ -177,6 +180,15 @@ useEffect(() => {
         >
           {MAPS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
         </select>
+        {selectedMap.topo && (
+  <button
+    onClick={() => setShowTopo(t => !t)}
+    className="btn btn-ghost"
+    style={{ fontSize:'12px', padding:'5px 12px', border: showTopo ? '1px solid var(--green)' : '1px solid var(--border)', color: showTopo ? 'var(--green)' : 'var(--muted)' }}
+  >
+    {showTopo ? '🗺️ Topo' : '🛰️ Satellite'}
+  </button>
+)}
 
         {/* Legend */}
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
@@ -218,7 +230,7 @@ useEffect(() => {
             {/* Map image */}
             {!mapError && selectedMap.image ? (
               <img
-                src={selectedMap.image}
+                src={showTopo && selectedMap.topo ? selectedMap.topo : selectedMap.image}
                 onLoad={() => setMapLoaded(true)}
                 onError={() => setMapError(true)}
                 style={{
