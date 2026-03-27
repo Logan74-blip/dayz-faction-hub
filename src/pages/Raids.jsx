@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { Plus, Trash2, Calendar, MapPin, Users } from 'lucide-react'
+import { useRole } from '../hooks/useRole'
 
 const STATUS_COLORS = {
   planned: 'tag-yellow',
