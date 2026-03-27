@@ -146,6 +146,7 @@ export default function Directory({ session }) {
 }
 
 function FactionCard({ faction }) {
+    const navigate = useNavigate()
   const memberCount = faction.faction_members?.[0]?.count || 0
   return (
     <div className="card" style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 18px' }}>
