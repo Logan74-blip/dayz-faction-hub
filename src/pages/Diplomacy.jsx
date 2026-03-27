@@ -33,17 +33,42 @@ export default function Diplomacy({ session }) {
   }
 
   async function submitDiplomacy() {
-    if (!form.target || !faction) return
-    const { error } = await supabase.from('diplomacy').insert({
-      faction_a: faction.id,
-      faction_b: form.target,
-      type: form.type,
-      terms: form.terms,
-      status: 'pending',
-      created_by: userId
+  if (!form.target || !faction) return
+  const { data, error } = await supabase.from('diplomacy').insert({
+    faction_a: faction.id,
+    faction_b: form.target,
+    type: form.type,
+    terms: form.terms,
+    status: 'pending',
+    created_by: userId
+  }).select().single()
+
+  if (!error) {
+    setForm({ target:'', type:'nap', terms:'' })
+    loadData()
+    // Auto-log to event feed
+    const targetFaction = allFactions.find(f => f.id === form.target)
+    const typeLabel = form.type === 'nap' ? 'Non-Aggression Pact' : form.type === 'war' ? 'War Declaration' : 'Trade Offer'
+    await supabase.from('events').insert({
+      faction_id: faction.id,
+      created_by: userId,
+      type: 'diplomacy',
+      title: `${typeLabel} sent to ${targetFaction?.name}`,
+      description: form.terms || 'No terms specified'
     })
-    if (!error) { setForm({ target:'', type:'nap', terms:'' }); loadData() }
+    // Notify target faction leaders
+    const { data: leaders } = await supabase.from('faction_members').select('user_id').eq('faction_id', form.target).in('role', ['leader', 'co-leader'])
+    if (leaders?.length) {
+      await supabase.from('notifications').insert(leaders.map(l => ({
+        faction_id: form.target,
+        user_id: l.user_id,
+        type: form.type === 'war' ? 'war' : 'diplomacy',
+        title: `${form.type === 'war' ? '💀 War Declared' : form.type === 'nap' ? '🤝 NAP Proposed' : '🛒 Trade Offer'} by ${faction.name}`,
+        body: form.terms || 'No terms specified'
+      })))
+    }
   }
+}
 
   async function updateStatus(id, status) {
     await supabase.from('diplomacy').update({ status }).eq('id', id)

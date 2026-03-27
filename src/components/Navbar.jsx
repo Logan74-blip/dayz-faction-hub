@@ -1,47 +1,92 @@
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../supabaseClient'
-import { Map, Package, Shield, LayoutDashboard, LogOut, Sword, Swords, Settings, Globe, Bell, Megaphone, Trophy, ShoppingBag, Target, Activity, Star, UserPlus, MessageSquare, Flame, Network, Calendar, Coins, Palette, Shield as ShieldAdmin } from 'lucide-react'
+import { LayoutDashboard, Map, Sword, ShoppingBag, Shield, Globe, Settings, Bell, LogOut, ChevronDown, Flame, MessageSquare, Network, Calendar, Trophy, Swords, UserPlus, Star, Coins, Package, Target, Megaphone, Activity, Palette } from 'lucide-react'
 
-const links = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/map', label: 'War Map', icon: Map },
-  { to: '/raids', label: 'Raids', icon: Sword },
-  { to: '/warroom', label: 'War Room', icon: Flame },
-  { to: '/announcements', label: 'Announcements', icon: Megaphone },
-  { to: '/eventlog', label: 'Event Log', icon: Activity },
-  { to: '/bounties', label: 'Bounties', icon: Target },
-  { to: '/trading', label: 'Trading', icon: ShoppingBag },
-  { to: '/treasury', label: 'Treasury', icon: Coins },
-  { to: '/resources', label: 'Resources', icon: Package },
-  { to: '/diplomacy', label: 'Diplomacy', icon: Shield },
-  { to: '/messages', label: 'Messages', icon: MessageSquare },
-  { to: '/alliance-network', label: 'Alliances', icon: Network },
-  { to: '/server-calendar', label: 'Server Events', icon: Calendar },
-  { to: '/achievements', label: 'Achievements', icon: Star },
-  { to: '/leaderboard', label: 'Leaderboard', icon: Trophy },
-  { to: '/versus', label: 'F vs F', icon: Swords },
-  { to: '/directory', label: 'Directory', icon: Globe },
-  { to: '/join-requests', label: 'Join Requests', icon: UserPlus },
-  { to: '/customize', label: 'Customize', icon: Palette },
-  { to: '/admin', label: 'Admin', icon: ShieldAdmin },
-  { to: '/settings', label: 'Settings', icon: Settings },
+const NAV_GROUPS = [
+  {
+    label: 'Home',
+    icon: LayoutDashboard,
+    to: '/',
+    single: true
+  },
+  {
+    label: 'Operations',
+    icon: Sword,
+    children: [
+      { to: '/raids', label: 'Raids', icon: Sword },
+      { to: '/warroom', label: 'War Room', icon: Flame },
+      { to: '/bounties', label: 'Bounties', icon: Target },
+      { to: '/map', label: 'War Map', icon: Map },
+      { to: '/versus', label: 'F vs F', icon: Swords },
+    ]
+  },
+  {
+    label: 'Economy',
+    icon: ShoppingBag,
+    children: [
+      { to: '/trading', label: 'Trading Post', icon: ShoppingBag },
+      { to: '/treasury', label: 'Treasury', icon: Coins },
+      { to: '/resources', label: 'Resources', icon: Package },
+    ]
+  },
+  {
+    label: 'Diplomacy',
+    icon: Shield,
+    children: [
+      { to: '/diplomacy', label: 'Diplomacy Board', icon: Shield },
+      { to: '/messages', label: 'Messages', icon: MessageSquare },
+      { to: '/alliance-network', label: 'Alliance Network', icon: Network },
+    ]
+  },
+  {
+    label: 'Intel',
+    icon: Activity,
+    children: [
+      { to: '/announcements', label: 'Announcements', icon: Megaphone },
+      { to: '/eventlog', label: 'Event Log', icon: Activity },
+      { to: '/server-calendar', label: 'Server Events', icon: Calendar },
+    ]
+  },
+  {
+    label: 'Community',
+    icon: Globe,
+    children: [
+      { to: '/directory', label: 'Directory', icon: Globe },
+      { to: '/leaderboard', label: 'Leaderboard', icon: Trophy },
+      { to: '/join-requests', label: 'Join Requests', icon: UserPlus },
+      { to: '/achievements', label: 'Achievements', icon: Star },
+    ]
+  },
+  {
+    label: 'Settings',
+    icon: Settings,
+    children: [
+      { to: '/settings', label: 'Faction Settings', icon: Settings },
+      { to: '/customize', label: 'Customize', icon: Palette },
+      { to: '/admin', label: 'Admin Dashboard', icon: Shield },
+    ]
+  },
 ]
 
 export default function Navbar({ session }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const avatar = session?.user?.user_metadata?.avatar_url
+  const name = session?.user?.user_metadata?.full_name || session?.user?.email
   const [notifications, setNotifications] = useState([])
   const [showBell, setShowBell] = useState(false)
+  const [openGroup, setOpenGroup] = useState(null)
   const [unreadMessages, setUnreadMessages] = useState(0)
   const bellRef = useRef(null)
+  const navRef = useRef(null)
   const userId = session.user.id
 
   useEffect(() => {
     loadNotifications()
     loadUnreadMessages()
     saveProfile()
-    const channel = supabase.channel('notifications')
+    const channel = supabase.channel('notif_' + userId)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
         payload => setNotifications(n => [payload.new, ...n])
       ).subscribe()
@@ -49,16 +94,24 @@ export default function Navbar({ session }) {
   }, [])
 
   useEffect(() => {
-    function handleClick(e) { if (!bellRef.current?.contains(e.target)) setShowBell(false) }
+    function handleClick(e) {
+      if (!bellRef.current?.contains(e.target) && !navRef.current?.contains(e.target)) {
+        setShowBell(false)
+        setOpenGroup(null)
+      }
+    }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
+
+  // Close dropdown on route change
+  useEffect(() => { setOpenGroup(null) }, [location])
 
   async function saveProfile() {
     const meta = session.user.user_metadata
     await supabase.from('profiles').upsert({
       id: userId,
-      discord_username: meta?.full_name || meta?.name || 'Unknown',
+      discord_username: meta?.full_name || meta?.name || meta?.user_name || 'Unknown',
       discord_avatar: meta?.avatar_url || null,
       updated_at: new Date().toISOString()
     }, { onConflict: 'id' })
@@ -94,42 +147,102 @@ export default function Navbar({ session }) {
   const unread = notifications.filter(n => !n.read).length
   const typeIcon = { raid:'⚔️', diplomacy:'🤝', member:'👤', war:'💀', general:'📢', bounty:'🎯', trade:'🛒', announcement:'📣' }
 
+  function isGroupActive(group) {
+    if (group.single) return location.pathname === group.to
+    return group.children?.some(c => location.pathname === c.to)
+  }
+
   return (
     <>
-      <nav style={{
+      <nav ref={navRef} style={{
         background: 'var(--surface)', borderBottom: '1px solid var(--border)',
         display: 'flex', alignItems: 'center', padding: '0 16px',
-        height: '56px', position: 'sticky', top: 0, zIndex: 100,
-        gap: '2px', overflowX: 'auto'
+        height: '56px', position: 'sticky', top: 0, zIndex: 100, gap: '2px'
       }}>
-        <span style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'16px', marginRight:'8px', letterSpacing:'0.1em', whiteSpace:'nowrap', flexShrink:0 }}>
+        {/* Logo */}
+        <span onClick={() => navigate('/')} style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'15px', marginRight:'12px', letterSpacing:'0.1em', whiteSpace:'nowrap', cursor:'pointer', flexShrink:0 }}>
           ☢ FACTION HUB
         </span>
 
-        <div style={{ display:'flex', gap:'1px', overflowX:'auto', flex:1 }} className="hide-scrollbar">
-          {links.map(({ to, label, icon: Icon }) => (
-            <NavLink key={to} to={to} end={to==='/'} style={({ isActive }) => ({
-              display: 'flex', alignItems: 'center', gap: '4px',
-              padding: '6px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600,
-              color: isActive ? 'var(--green)' : 'var(--muted)',
-              background: isActive ? '#14532d33' : 'transparent',
-              transition: 'all 0.15s', whiteSpace: 'nowrap', flexShrink: 0,
-              textDecoration: 'none', position: 'relative'
-            })}>
-              <Icon size={12} />
-              {label}
-              {to === '/messages' && unreadMessages > 0 && (
-                <span style={{ background:'var(--red)', color:'#fff', borderRadius:'999px', fontSize:'9px', padding:'1px 5px', fontWeight:700 }}>
-                  {unreadMessages}
-                </span>
-              )}
-            </NavLink>
-          ))}
+        {/* Nav groups */}
+        <div style={{ display:'flex', gap:'2px', flex:1 }}>
+          {NAV_GROUPS.map(group => {
+            const active = isGroupActive(group)
+            const Icon = group.icon
+            const isOpen = openGroup === group.label
+
+            if (group.single) {
+              return (
+                <NavLink key={group.to} to={group.to} end style={({ isActive }) => ({
+                  display:'flex', alignItems:'center', gap:'5px', padding:'6px 10px',
+                  borderRadius:'4px', fontSize:'12px', fontWeight:600, textDecoration:'none',
+                  color: isActive ? 'var(--green)' : 'var(--muted)',
+                  background: isActive ? '#14532d33' : 'transparent', whiteSpace:'nowrap'
+                })}>
+                  <Icon size={13} /> {group.label}
+                </NavLink>
+              )
+            }
+
+            return (
+              <div key={group.label} style={{ position:'relative' }}>
+                <button onClick={() => setOpenGroup(isOpen ? null : group.label)} style={{
+                  display:'flex', alignItems:'center', gap:'5px', padding:'6px 10px',
+                  borderRadius:'4px', fontSize:'12px', fontWeight:600, cursor:'pointer',
+                  color: active || isOpen ? 'var(--green)' : 'var(--muted)',
+                  background: active || isOpen ? '#14532d33' : 'transparent',
+                  border:'none', whiteSpace:'nowrap', transition:'all 0.15s'
+                }}>
+                  <Icon size={13} />
+                  {group.label}
+                  {group.label === 'Diplomacy' && unreadMessages > 0 && (
+                    <span style={{ background:'var(--red)', color:'#fff', borderRadius:'999px', fontSize:'9px', padding:'1px 5px', fontWeight:700 }}>
+                      {unreadMessages}
+                    </span>
+                  )}
+                  <ChevronDown size={11} style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition:'transform 0.15s' }} />
+                </button>
+
+                {isOpen && (
+                  <div style={{
+                    position:'absolute', top:'calc(100% + 4px)', left:0,
+                    background:'var(--surface)', border:'1px solid var(--border)',
+                    borderRadius:'8px', zIndex:200, minWidth:'180px',
+                    boxShadow:'0 8px 32px #00000088', padding:'6px',
+                    display:'flex', flexDirection:'column', gap:'2px'
+                  }}>
+                    {group.children.map(({ to, label, icon: CIcon }) => (
+                      <NavLink key={to} to={to} style={({ isActive }) => ({
+                        display:'flex', alignItems:'center', gap:'8px', padding:'8px 12px',
+                        borderRadius:'6px', fontSize:'13px', fontWeight:600, textDecoration:'none',
+                        color: isActive ? 'var(--green)' : 'var(--text)',
+                        background: isActive ? '#14532d33' : 'transparent',
+                        transition:'background 0.1s'
+                      })}
+                        onMouseEnter={e => { if (!e.currentTarget.classList.contains('active')) e.currentTarget.style.background = '#1a2e1a' }}
+                        onMouseLeave={e => e.currentTarget.style.background = ''}
+                      >
+                        <CIcon size={14} />
+                        {label}
+                        {label === 'Messages' && unreadMessages > 0 && (
+                          <span style={{ background:'var(--red)', color:'#fff', borderRadius:'999px', fontSize:'9px', padding:'1px 5px', marginLeft:'auto' }}>
+                            {unreadMessages}
+                          </span>
+                        )}
+                      </NavLink>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
 
+        {/* Right side */}
         <div style={{ display:'flex', alignItems:'center', gap:'8px', flexShrink:0, marginLeft:'8px' }}>
+          {/* Bell */}
           <div ref={bellRef} style={{ position:'relative' }}>
-            <button onClick={() => setShowBell(s => !s)} style={{
+            <button onClick={() => { setShowBell(s => !s); setOpenGroup(null) }} style={{
               background:'transparent', border:'none', color: unread > 0 ? 'var(--green)' : 'var(--muted)',
               cursor:'pointer', padding:'6px', position:'relative', display:'flex', alignItems:'center'
             }}>
@@ -179,13 +292,13 @@ export default function Navbar({ session }) {
             )}
           </div>
 
-          {avatar && <img src={avatar} style={{ width:24, height:24, borderRadius:'50%', border:'1px solid var(--border)', flexShrink:0 }} />}
+          {avatar && <img src={avatar} style={{ width:26, height:26, borderRadius:'50%', border:'1px solid var(--border)', flexShrink:0 }} />}
+          <span style={{ fontSize:'11px', color:'var(--muted)', whiteSpace:'nowrap', maxWidth:'80px', overflow:'hidden', textOverflow:'ellipsis' }}>{name}</span>
           <button onClick={logout} className="btn btn-ghost" style={{ display:'flex', alignItems:'center', gap:'4px', fontSize:'11px', padding:'4px 8px', flexShrink:0 }}>
             <LogOut size={12} /> Out
           </button>
         </div>
       </nav>
-      <style>{`.hide-scrollbar::-webkit-scrollbar{display:none}.hide-scrollbar{-ms-overflow-style:none;scrollbar-width:none}`}</style>
     </>
   )
 }

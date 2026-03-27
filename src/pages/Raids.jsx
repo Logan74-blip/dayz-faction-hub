@@ -47,19 +47,43 @@ const [showTemplates, setShowTemplates] = useState(false)
   }
 
   async function createRaid() {
-    if (!form.title.trim() || !form.scheduled_at) return
-    const { data, error } = await supabase.from('raids').insert({
-      faction_id: faction.id, created_by: userId,
-      title: form.title, target_location: form.target_location,
-      scheduled_at: form.scheduled_at, description: form.description, status: 'planned'
-    }).select().single()
-    if (!error) {
-      setRaids(r => [...r, data].sort((a,b) => new Date(a.scheduled_at) - new Date(b.scheduled_at)))
-      setForm({ title:'', target_location:'', scheduled_at:'', description:'' })
-      setShowForm(false)
-      notifyDiscord(faction.id, data)
+  if (!form.title.trim() || !form.scheduled_at) return
+  const { data, error } = await supabase.from('raids').insert({
+    faction_id: faction.id,
+    created_by: userId,
+    title: form.title,
+    target_location: form.target_location,
+    scheduled_at: form.scheduled_at,
+    description: form.description,
+    status: 'planned'
+  }).select().single()
+
+  if (!error) {
+    setRaids(r => [...r, data].sort((a,b) => new Date(a.scheduled_at) - new Date(b.scheduled_at)))
+    setForm({ title:'', target_location:'', scheduled_at:'', description:'' })
+    setShowForm(false)
+    notifyDiscord(faction.id, data)
+    // Auto-log to event feed
+    await supabase.from('events').insert({
+      faction_id: faction.id,
+      created_by: userId,
+      type: 'raid',
+      title: `Raid Scheduled: ${data.title}`,
+      description: `Target: ${data.target_location || 'TBD'} — ${new Date(data.scheduled_at).toLocaleString()}`
+    })
+    // Notify all faction members
+    const { data: members } = await supabase.from('faction_members').select('user_id').eq('faction_id', faction.id).neq('user_id', userId)
+    if (members?.length) {
+      await supabase.from('notifications').insert(members.map(m => ({
+        faction_id: faction.id,
+        user_id: m.user_id,
+        type: 'raid',
+        title: `⚔️ Raid Scheduled: ${data.title}`,
+        body: `Target: ${data.target_location || 'TBD'} at ${new Date(data.scheduled_at).toLocaleString()}`
+      })))
     }
   }
+}
 
   async function deleteRaid(id) {
     await supabase.from('raids').delete().eq('id', id)
@@ -116,9 +140,35 @@ const [showTemplates, setShowTemplates] = useState(false)
           </div>
           <input type="datetime-local" value={form.scheduled_at} onChange={e => setForm(f => ({...f, scheduled_at:e.target.value}))} />
           <textarea placeholder="Briefing..." value={form.description} onChange={e => setForm(f => ({...f, description:e.target.value}))} rows={2} />
+            <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
+  <button className="btn btn-green" onClick={createRaid}>Create Operation</button>
+  <button className="btn btn-ghost" onClick={() => setShowForm(false)}>Cancel</button>
+  {form.title && (
+    <button className="btn btn-ghost" style={{ fontSize:'12px' }} onClick={async () => {
+      if (!faction || !form.title) return
+      const { data } = await supabase.from('raid_templates').insert({
+        faction_id: faction.id, created_by: userId,
+        title: form.title, target_location: form.target_location, description: form.description
+      }).select().single()
+      if (data) setTemplates(t => [...t, data])
+      alert('Template saved!')
+    }}>💾 Save as Template</button>
+  )}
+</div>
           <div style={{ display:'flex', gap:'8px' }}>
             <button className="btn btn-green" onClick={createRaid}>Create Operation</button>
             <button className="btn btn-ghost" onClick={() => setShowForm(false)}>Cancel</button>
+            {templates.length > 0 && (
+  <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', marginBottom:'8px' }}>
+    <span style={{ fontSize:'12px', color:'var(--muted)', alignSelf:'center' }}>Templates:</span>
+    {templates.map(t => (
+      <button key={t.id} onClick={() => setForm(f => ({...f, title:t.title, target_location:t.target_location||'', description:t.description||''}))}
+        className="btn btn-ghost" style={{ fontSize:'12px', padding:'4px 10px' }}>
+        {t.title}
+      </button>
+    ))}
+  </div>
+)}
           </div>
         </div>
       )}

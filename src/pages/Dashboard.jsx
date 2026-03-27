@@ -32,9 +32,29 @@ export default function Dashboard({ session }) {
     const { data } = await supabase.from('faction_members').select('*, factions(*)').eq('user_id', userId).maybeSingle()
     if (data?.factions) {
       setFaction(data.factions)
-      await Promise.all([loadStats(data.factions.id), loadMembers(data.factions.id), loadHistory(data.factions.id)])
-    }
-  }
+      async function loadStats(fid) {
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  const [t, r, p, raids, mems, newMems, warsWon, warsLost] = await Promise.all([
+    supabase.from('territories').select('id', { count:'exact', head:true }).eq('faction_id', fid),
+    supabase.from('resources').select('id', { count:'exact', head:true }).eq('faction_id', fid),
+    supabase.from('diplomacy').select('id', { count:'exact', head:true }).eq('status', 'active').or(`faction_a.eq.${fid},faction_b.eq.${fid}`),
+    supabase.from('raids').select('id', { count:'exact', head:true }).eq('faction_id', fid),
+    supabase.from('faction_members').select('id', { count:'exact', head:true }).eq('faction_id', fid),
+    supabase.from('faction_members').select('id', { count:'exact', head:true }).eq('faction_id', fid).gte('joined_at', weekAgo),
+    supabase.from('diplomacy').select('id', { count:'exact', head:true }).eq('faction_b', fid).eq('type', 'war').eq('status', 'expired'),
+    supabase.from('diplomacy').select('id', { count:'exact', head:true }).eq('faction_a', fid).eq('type', 'war').eq('status', 'expired'),
+  ])
+  setStats({
+    territories: t.count || 0,
+    resources: r.count || 0,
+    pacts: p.count || 0,
+    raids: raids.count || 0,
+    members: mems.count || 0,
+    newMembers: newMems.count || 0,
+    wars_won: warsWon.count || 0,
+    wars_lost: warsLost.count || 0
+  })
+}
 
   async function loadStats(fid) {
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()

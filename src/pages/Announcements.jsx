@@ -12,10 +12,41 @@ export default function Announcements({ session }) {
 
   useEffect(() => { if (faction) load() }, [faction])
 
-  async function load() {
-    const { data } = await supabase.from('announcements').select('*, profile:profiles!announcements_created_by_fkey(discord_username, discord_avatar)').eq('faction_id', faction.id).order('pinned', { ascending:false }).order('created_at', { ascending:false })
-    setAnnouncements(data || [])
+  async function post() {
+  if (!form.title.trim() || !form.body.trim() || !faction) return
+  const { data, error } = await supabase.from('announcements').insert({
+    faction_id: faction.id,
+    created_by: userId,
+    title: form.title,
+    body: form.body,
+    pinned: form.pinned
+  }).select().single()
+
+  if (!error) {
+    setAnnouncements(a => [data, ...a])
+    setForm({ title:'', body:'', pinned:false })
+    setShowForm(false)
+    // Log to event feed
+    await supabase.from('events').insert({
+      faction_id: faction.id,
+      created_by: userId,
+      type: 'custom',
+      title: `📣 Announcement: ${form.title}`,
+      description: form.body.slice(0, 100)
+    })
+    // Notify members
+    const { data: members } = await supabase.from('faction_members').select('user_id').eq('faction_id', faction.id).neq('user_id', userId)
+    if (members?.length) {
+      await supabase.from('notifications').insert(members.map(m => ({
+        faction_id: faction.id,
+        user_id: m.user_id,
+        type: 'announcement',
+        title: `📣 ${form.title}`,
+        body: form.body.slice(0, 80)
+      })))
+    }
   }
+}
 
   async function post() {
     if (!form.title.trim() || !form.body.trim()) return

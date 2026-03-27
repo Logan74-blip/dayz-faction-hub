@@ -84,19 +84,35 @@ useEffect(() => {
   }
 
   async function saveMarker() {
-    if (!form.label.trim()) return
-    const { data, error } = await supabase.from('territories').insert({
+  if (!form.label.trim() || !faction) return
+  const { data, error } = await supabase.from('territories').insert({
+    faction_id: faction.id,
+    label: form.label,
+    type: form.type,
+    notes: form.notes,
+    lat: pending.y,
+    lng: pending.x,
+    map_id: selectedMap.id,
+    created_by: userId
+  }).select().single()
+
+  if (!error) {
+    setMarkers(m => [...m, data])
+    setPending(null)
+    setForm({ label: '', type: 'base', notes: '' })
+    // Log to event feed
+    await supabase.from('events').insert({
       faction_id: faction.id,
-      label: form.label,
-      type: form.type,
-      notes: form.notes,
-      lat: pending.y,
-      lng: pending.x,
-      map_id: selectedMap.id,
-      created_by: userId
-    }).select().single()
-    if (!error) { setMarkers(m => [...m, data]); setPending(null) }
+      created_by: userId,
+      type: 'territory',
+      title: `Territory Claimed: ${form.label}`,
+      description: `Type: ${form.type} on ${selectedMap.name}`
+    })
+  } else {
+    console.error('Failed to save marker:', error)
+    alert('Failed to save marker. Make sure you are in a faction.')
   }
+}
 
   async function deleteMarker(id, e) {
     e.stopPropagation()
