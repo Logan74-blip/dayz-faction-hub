@@ -29,50 +29,42 @@ export default function Dashboard({ session }) {
   useEffect(() => { loadFaction() }, [])
 
   async function loadFaction() {
-    const { data } = await supabase.from('faction_members').select('*, factions(*)').eq('user_id', userId).maybeSingle()
+    const { data } = await supabase
+      .from('faction_members')
+      .select('*, factions(*)')
+      .eq('user_id', userId)
+      .maybeSingle()
     if (data?.factions) {
       setFaction(data.factions)
-      async function loadStats(fid) {
-  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-  const [t, r, p, raids, mems, newMems, warsWon, warsLost] = await Promise.all([
-    supabase.from('territories').select('id', { count:'exact', head:true }).eq('faction_id', fid),
-    supabase.from('resources').select('id', { count:'exact', head:true }).eq('faction_id', fid),
-    supabase.from('diplomacy').select('id', { count:'exact', head:true }).eq('status', 'active').or(`faction_a.eq.${fid},faction_b.eq.${fid}`),
-    supabase.from('raids').select('id', { count:'exact', head:true }).eq('faction_id', fid),
-    supabase.from('faction_members').select('id', { count:'exact', head:true }).eq('faction_id', fid),
-    supabase.from('faction_members').select('id', { count:'exact', head:true }).eq('faction_id', fid).gte('joined_at', weekAgo),
-    supabase.from('diplomacy').select('id', { count:'exact', head:true }).eq('faction_b', fid).eq('type', 'war').eq('status', 'expired'),
-    supabase.from('diplomacy').select('id', { count:'exact', head:true }).eq('faction_a', fid).eq('type', 'war').eq('status', 'expired'),
-  ])
-  setStats({
-    territories: t.count || 0,
-    resources: r.count || 0,
-    pacts: p.count || 0,
-    raids: raids.count || 0,
-    members: mems.count || 0,
-    newMembers: newMems.count || 0,
-    wars_won: warsWon.count || 0,
-    wars_lost: warsLost.count || 0
-  })
-}
+      await Promise.all([
+        loadStats(data.factions.id),
+        loadMembers(data.factions.id),
+        loadHistory(data.factions.id)
+      ])
+    }
+  }
 
   async function loadStats(fid) {
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
     const [t, r, p, raids, mems, newMems, warsWon, warsLost] = await Promise.all([
-      supabase.from('territories').select('id', { count:'exact' }).eq('faction_id', fid),
-      supabase.from('resources').select('id', { count:'exact' }).eq('faction_id', fid),
-      supabase.from('diplomacy').select('id', { count:'exact' }).eq('status', 'active').or(`faction_a.eq.${fid},faction_b.eq.${fid}`),
-      supabase.from('raids').select('id', { count:'exact' }).eq('faction_id', fid).eq('status', 'completed'),
-      supabase.from('faction_members').select('id', { count:'exact' }).eq('faction_id', fid),
-      supabase.from('faction_members').select('id', { count:'exact' }).eq('faction_id', fid).gte('joined_at', weekAgo),
-      supabase.from('diplomacy').select('id', { count:'exact' }).eq('faction_b', fid).eq('type', 'war').eq('status', 'active'),
-      supabase.from('diplomacy').select('id', { count:'exact' }).eq('faction_a', fid).eq('type', 'war').eq('status', 'active'),
+      supabase.from('territories').select('id', { count:'exact', head:true }).eq('faction_id', fid),
+      supabase.from('resources').select('id', { count:'exact', head:true }).eq('faction_id', fid),
+      supabase.from('diplomacy').select('id', { count:'exact', head:true }).eq('status', 'active').or(`faction_a.eq.${fid},faction_b.eq.${fid}`),
+      supabase.from('raids').select('id', { count:'exact', head:true }).eq('faction_id', fid),
+      supabase.from('faction_members').select('id', { count:'exact', head:true }).eq('faction_id', fid),
+      supabase.from('faction_members').select('id', { count:'exact', head:true }).eq('faction_id', fid).gte('joined_at', weekAgo),
+      supabase.from('diplomacy').select('id', { count:'exact', head:true }).eq('faction_b', fid).eq('type', 'war').eq('status', 'expired'),
+      supabase.from('diplomacy').select('id', { count:'exact', head:true }).eq('faction_a', fid).eq('type', 'war').eq('status', 'expired'),
     ])
     setStats({
-      territories: t.count || 0, resources: r.count || 0,
-      pacts: p.count || 0, raids: raids.count || 0,
-      members: mems.count || 0, newMembers: newMems.count || 0,
-      wars_won: warsWon.count || 0, wars_lost: warsLost.count || 0
+      territories: t.count || 0,
+      resources: r.count || 0,
+      pacts: p.count || 0,
+      raids: raids.count || 0,
+      members: mems.count || 0,
+      newMembers: newMems.count || 0,
+      wars_won: warsWon.count || 0,
+      wars_lost: warsLost.count || 0
     })
   }
 
@@ -97,7 +89,11 @@ export default function Dashboard({ session }) {
 
   async function createFaction() {
     if (!factionName.trim()) return
-    const { data, error } = await supabase.from('factions').insert({ name: factionName.trim(), created_by: userId }).select().single()
+    const { data, error } = await supabase
+      .from('factions')
+      .insert({ name: factionName.trim(), created_by: userId })
+      .select()
+      .single()
     if (!error) {
       await supabase.from('faction_members').insert({ faction_id: data.id, user_id: userId, role: 'leader' })
       await supabase.from('member_history').insert({ faction_id: data.id, user_id: userId, action: 'joined' })
@@ -110,62 +106,78 @@ export default function Dashboard({ session }) {
       <div className="card" style={{ display:'flex', flexDirection:'column', gap:'16px', textAlign:'center' }}>
         <h2 style={{ fontSize:'22px', fontWeight:700 }}>You're not in a faction yet</h2>
         <p style={{ color:'var(--muted)' }}>Create a new faction to get started</p>
-        <input placeholder="Faction name..." value={factionName} onChange={e => setFactionName(e.target.value)} onKeyDown={e => e.key==='Enter' && createFaction()} />
+        <input
+          placeholder="Faction name..."
+          value={factionName}
+          onChange={e => setFactionName(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && createFaction()}
+        />
         <button className="btn btn-green" onClick={createFaction}>Create Faction</button>
+        <p style={{ color:'var(--muted)', fontSize:'13px' }}>
+          Already in a faction? Ask your leader for an invite link.
+        </p>
       </div>
     </div>
   )
 
   const joins = history.filter(h => h.action === 'joined').length
   const leaves = history.filter(h => h.action === 'left').length
-  const turnoverRate = stats.members > 0 ? Math.round((leaves / Math.max(joins, 1)) * 100) : 0
+  const turnoverRate = joins > 0 ? Math.round((leaves / joins) * 100) : 0
 
   const statCards = [
     { label:'Territories', value:stats.territories, icon:Map, color:'var(--green)', path:'/map' },
     { label:'Resources', value:stats.resources, icon:Package, color:'var(--yellow)', path:'/resources' },
     { label:'Active Pacts', value:stats.pacts, icon:Shield, color:'#818cf8', path:'/diplomacy' },
-    { label:'Raids Done', value:stats.raids, icon:Sword, color:'var(--red)', path:'/raids' },
+    { label:'Raids', value:stats.raids, icon:Sword, color:'var(--red)', path:'/raids' },
     { label:'Members', value:stats.members, icon:Users, color:'var(--green)', path:'/settings' },
     { label:'New This Week', value:stats.newMembers, icon:TrendingUp, color:'var(--yellow)', path:'/settings' },
   ]
 
-  const tabs = ['overview', 'members', 'turnover']
-
   return (
     <div style={{ maxWidth:960, margin:'40px auto', padding:'0 24px', display:'flex', flexDirection:'column', gap:'24px' }}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:'12px' }}>
         <div>
-          <h1 style={{ fontFamily:'Share Tech Mono', fontSize:'26px', color:'var(--green)' }}>{faction.name}</h1>
+          <h1 style={{ fontFamily:'Share Tech Mono', fontSize:'26px', color:'var(--green)' }}>
+            {faction.flag ? <span style={{ marginRight:'10px' }}>{faction.flag}</span> : null}
+            {faction.name}
+          </h1>
           <p style={{ color:'var(--muted)', marginTop:'4px' }}>
             Faction Command Center
-            {faction.server_name && <span style={{ marginLeft:'10px', color:'var(--green)', fontSize:'13px' }}>📡 {faction.server_name}</span>}
+            {faction.server_name && (
+              <span style={{ marginLeft:'10px', color:'var(--green)', fontSize:'13px' }}>
+                📡 {faction.server_name}
+              </span>
+            )}
           </p>
         </div>
-        <div style={{ display:'flex', gap:'8px' }}>
+        <div style={{ display:'flex', gap:'8px', alignItems:'center', flexWrap:'wrap' }}>
           {faction.tag && <span className="tag tag-green" style={{ fontSize:'14px' }}>{faction.tag}</span>}
-          {faction.is_recruiting && <span className="tag tag-yellow">Recruiting</span>}
+          {faction.is_recruiting
+            ? <span className="tag tag-green">✅ Recruiting</span>
+            : <span className="tag tag-red">🚫 Full</span>
+          }
         </div>
       </div>
 
       {/* Tabs */}
       <div style={{ display:'flex', gap:'4px', borderBottom:'1px solid var(--border)' }}>
-        {tabs.map(tab => (
+        {['overview', 'members', 'turnover'].map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)} style={{
             background:'transparent', border:'none', padding:'8px 16px', cursor:'pointer',
             fontSize:'13px', fontWeight:600, fontFamily:'Rajdhani',
             color: activeTab===tab ? 'var(--green)' : 'var(--muted)',
             borderBottom: activeTab===tab ? '2px solid var(--green)' : '2px solid transparent',
-            textTransform:'capitalize', transition:'all 0.15s'
+            textTransform:'capitalize'
           }}>
             {tab === 'turnover' ? '📊 Turnover' : tab === 'members' ? '👥 Members' : '🏠 Overview'}
           </button>
         ))}
       </div>
 
-      {/* Overview Tab */}
+      {/* Overview */}
       {activeTab === 'overview' && (
         <>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:'14px' }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))', gap:'14px' }}>
             {statCards.map(({ label, value, icon: Icon, color, path }) => (
               <div key={label} className="card" style={{ cursor:'pointer', display:'flex', gap:'14px', alignItems:'center' }} onClick={() => navigate(path)}>
                 <div style={{ background:`${color}22`, borderRadius:'8px', padding:'10px', display:'flex' }}>
@@ -180,31 +192,29 @@ export default function Dashboard({ session }) {
           </div>
 
           <div className="card">
-            <h3 style={{ fontWeight:700, fontSize:'15px', marginBottom:'12px' }}>💀 War Status</h3>
-            <div style={{ display:'flex', gap:'24px' }}>
-              <div style={{ textAlign:'center' }}>
-                <div style={{ fontSize:'32px', fontWeight:700, fontFamily:'Share Tech Mono', color:'var(--green)' }}>{stats.wars_won}</div>
-                <div style={{ fontSize:'12px', color:'var(--muted)' }}>Wars Won</div>
-              </div>
-              <div style={{ textAlign:'center' }}>
-                <div style={{ fontSize:'32px', fontWeight:700, fontFamily:'Share Tech Mono', color:'var(--red)' }}>{stats.wars_lost}</div>
-                <div style={{ fontSize:'12px', color:'var(--muted)' }}>Wars Lost</div>
-              </div>
-              <div style={{ textAlign:'center' }}>
-                <div style={{ fontSize:'32px', fontWeight:700, fontFamily:'Share Tech Mono', color:'var(--yellow)' }}>
-                  {stats.wars_won + stats.wars_lost > 0 ? Math.round((stats.wars_won / (stats.wars_won + stats.wars_lost)) * 100) : 0}%
+            <h3 style={{ fontWeight:700, fontSize:'15px', marginBottom:'14px' }}>💀 War Status</h3>
+            <div style={{ display:'flex', gap:'32px', flexWrap:'wrap' }}>
+              {[
+                { label:'Wars Won', value:stats.wars_won, color:'var(--green)' },
+                { label:'Wars Lost', value:stats.wars_lost, color:'var(--red)' },
+                { label:'Win Rate', value:`${stats.wars_won + stats.wars_lost > 0 ? Math.round((stats.wars_won / (stats.wars_won + stats.wars_lost)) * 100) : 0}%`, color:'var(--yellow)' },
+              ].map(({ label, value, color }) => (
+                <div key={label} style={{ textAlign:'center' }}>
+                  <div style={{ fontSize:'32px', fontWeight:700, fontFamily:'Share Tech Mono', color }}>{value}</div>
+                  <div style={{ fontSize:'12px', color:'var(--muted)', marginTop:'2px' }}>{label}</div>
                 </div>
-                <div style={{ fontSize:'12px', color:'var(--muted)' }}>Win Rate</div>
-              </div>
+              ))}
             </div>
           </div>
         </>
       )}
 
-      {/* Members Tab */}
+      {/* Members */}
       {activeTab === 'members' && (
         <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
-          {members.length === 0 && <p style={{ color:'var(--muted)', textAlign:'center', padding:'32px' }}>No members yet.</p>}
+          {members.length === 0 && (
+            <p style={{ color:'var(--muted)', textAlign:'center', padding:'32px' }}>No members yet.</p>
+          )}
           {members.map(m => (
             <div key={m.id} className="card" style={{ display:'flex', alignItems:'center', gap:'14px', padding:'12px 18px' }}>
               {m.profile?.discord_avatar
@@ -212,11 +222,17 @@ export default function Dashboard({ session }) {
                 : <div style={{ width:36, height:36, borderRadius:'50%', background:'var(--border)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'16px' }}>👤</div>
               }
               <div style={{ flex:1 }}>
-                <div style={{ fontWeight:700, fontSize:'15px' }}>{m.profile?.discord_username || 'Unknown'}</div>
-                <div style={{ fontSize:'12px', color:'var(--muted)' }}>Joined {new Date(m.joined_at).toLocaleDateString()}</div>
+                <div style={{ fontWeight:700, fontSize:'15px' }}>
+                  {m.profile?.discord_username || 'Member'}
+                </div>
+                <div style={{ fontSize:'12px', color:'var(--muted)' }}>
+                  Joined {new Date(m.joined_at).toLocaleDateString()}
+                </div>
               </div>
               <div style={{ textAlign:'right' }}>
-                <span className={`tag ${m.role === 'leader' ? 'tag-green' : 'tag-yellow'}`}>{m.role}</span>
+                <span className={`tag ${m.role === 'leader' || m.role === 'co-leader' ? 'tag-green' : 'tag-yellow'}`}>
+                  {m.role}
+                </span>
                 {m.activity?.[0]?.last_seen && (
                   <div style={{ fontSize:'11px', color: isRecent(m.activity[0].last_seen) ? 'var(--green)' : 'var(--muted)', marginTop:'4px' }}>
                     {isRecent(m.activity[0].last_seen) ? '🟢 Active' : `Last seen ${timeAgo(m.activity[0].last_seen)}`}
@@ -228,28 +244,21 @@ export default function Dashboard({ session }) {
         </div>
       )}
 
-      {/* Turnover Tab */}
+      {/* Turnover */}
       {activeTab === 'turnover' && (
         <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))', gap:'14px' }}>
-            <div className="card" style={{ textAlign:'center' }}>
-              <div style={{ fontSize:'36px', fontWeight:700, fontFamily:'Share Tech Mono', color:'var(--green)' }}>{joins}</div>
-              <div style={{ fontSize:'13px', color:'var(--muted)', marginTop:'4px' }}>Total Joins</div>
-            </div>
-            <div className="card" style={{ textAlign:'center' }}>
-              <div style={{ fontSize:'36px', fontWeight:700, fontFamily:'Share Tech Mono', color:'var(--red)' }}>{leaves}</div>
-              <div style={{ fontSize:'13px', color:'var(--muted)', marginTop:'4px' }}>Total Leaves</div>
-            </div>
-            <div className="card" style={{ textAlign:'center' }}>
-              <div style={{ fontSize:'36px', fontWeight:700, fontFamily:'Share Tech Mono', color: turnoverRate > 50 ? 'var(--red)' : turnoverRate > 25 ? 'var(--yellow)' : 'var(--green)' }}>
-                {turnoverRate}%
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(160px, 1fr))', gap:'14px' }}>
+            {[
+              { label:'Total Joins', value:joins, color:'var(--green)' },
+              { label:'Total Leaves', value:leaves, color:'var(--red)' },
+              { label:'Turnover Rate', value:`${turnoverRate}%`, color: turnoverRate > 50 ? 'var(--red)' : turnoverRate > 25 ? 'var(--yellow)' : 'var(--green)' },
+              { label:'New This Week', value:stats.newMembers, color:'var(--green)' },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="card" style={{ textAlign:'center' }}>
+                <div style={{ fontSize:'36px', fontWeight:700, fontFamily:'Share Tech Mono', color }}>{value}</div>
+                <div style={{ fontSize:'13px', color:'var(--muted)', marginTop:'4px' }}>{label}</div>
               </div>
-              <div style={{ fontSize:'13px', color:'var(--muted)', marginTop:'4px' }}>Turnover Rate</div>
-            </div>
-            <div className="card" style={{ textAlign:'center' }}>
-              <div style={{ fontSize:'36px', fontWeight:700, fontFamily:'Share Tech Mono', color:'var(--green)' }}>{stats.newMembers}</div>
-              <div style={{ fontSize:'13px', color:'var(--muted)', marginTop:'4px' }}>Joined This Week</div>
-            </div>
+            ))}
           </div>
 
           <div className="card">
@@ -262,7 +271,9 @@ export default function Dashboard({ session }) {
                   <span style={{ color: h.action === 'joined' ? 'var(--green)' : 'var(--red)', fontWeight:600 }}>
                     {h.action === 'joined' ? 'Member joined' : 'Member left'}
                   </span>
-                  <span style={{ color:'var(--muted)', marginLeft:'auto', fontSize:'12px' }}>{new Date(h.created_at).toLocaleDateString()}</span>
+                  <span style={{ color:'var(--muted)', marginLeft:'auto', fontSize:'12px' }}>
+                    {new Date(h.created_at).toLocaleDateString()}
+                  </span>
                 </div>
               ))}
             </div>
@@ -270,7 +281,7 @@ export default function Dashboard({ session }) {
 
           <div className="card" style={{ background:'#14532d22', borderColor:'var(--green-dim)' }}>
             <p style={{ fontSize:'13px', color:'var(--muted)' }}>
-              💡 <strong style={{ color:'var(--text)' }}>Turnover rate</strong> measures how many members leave relative to how many join. Under 25% is healthy. Over 50% suggests retention issues.
+              💡 <strong style={{ color:'var(--text)' }}>Turnover rate</strong> measures how many members leave relative to joins. Under 25% is healthy. Over 50% suggests retention issues.
             </p>
           </div>
         </div>
