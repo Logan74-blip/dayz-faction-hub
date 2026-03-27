@@ -23,25 +23,37 @@ export default function Dashboard({ session }) {
     }
   }
 
-  async function loadStats(fid) {
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-    const [t, r, p, raids, mems, newMems, warsWon, warsLost] = await Promise.all([
-      supabase.from('territories').select('id', { count:'exact' }).eq('faction_id', fid),
-      supabase.from('resources').select('id', { count:'exact' }).eq('faction_id', fid),
-      supabase.from('diplomacy').select('id', { count:'exact' }).eq('status', 'active').or(`faction_a.eq.${fid},faction_b.eq.${fid}`),
-      supabase.from('raids').select('id', { count:'exact' }).eq('faction_id', fid).eq('status', 'completed'),
-      supabase.from('faction_members').select('id', { count:'exact' }).eq('faction_id', fid),
-      supabase.from('faction_members').select('id', { count:'exact' }).eq('faction_id', fid).gte('joined_at', weekAgo),
-      supabase.from('diplomacy').select('id', { count:'exact' }).eq('faction_b', fid).eq('type', 'war').eq('status', 'active'),
-      supabase.from('diplomacy').select('id', { count:'exact' }).eq('faction_a', fid).eq('type', 'war').eq('status', 'active'),
-    ])
+async function loadMembers(fid) {
+  const { data } = await supabase
+    .from('faction_members')
+    .select('*, profile:profiles(discord_username, discord_avatar), activity:member_activity(last_seen)')
+    .eq('faction_id', fid)
+    .order('joined_at', { ascending: false })
+  setMembers(data || [])
+}
     setStats({
       territories: t.count || 0, resources: r.count || 0,
       pacts: p.count || 0, raids: raids.count || 0,
-      members: mems.count || 0, newMembers: newMems.count || 0,
-      wars_won: warsWon.count || 0, wars_lost: warsLost.count || 0
-    })
-  }
+     {members.map(m => (
+  <div key={m.id} className="card" style={{ display:'flex', alignItems:'center', gap:'14px', padding:'12px 18px' }}>
+    {m.profile?.discord_avatar
+      ? <img src={m.profile.discord_avatar} style={{ width:36, height:36, borderRadius:'50%', border:'2px solid var(--border)' }} />
+      : <div style={{ width:36, height:36, borderRadius:'50%', background:'var(--border)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'16px' }}>👤</div>
+    }
+    <div style={{ flex:1 }}>
+      <div style={{ fontWeight:700, fontSize:'15px' }}>{m.profile?.discord_username || 'Unknown'}</div>
+      <div style={{ fontSize:'12px', color:'var(--muted)' }}>Joined {new Date(m.joined_at).toLocaleDateString()}</div>
+    </div>
+    <div style={{ textAlign:'right' }}>
+      <span className={`tag ${m.role === 'leader' ? 'tag-green' : 'tag-yellow'}`}>{m.role}</span>
+      {m.activity?.[0]?.last_seen && (
+        <div style={{ fontSize:'11px', color: isRecent(m.activity[0].last_seen) ? 'var(--green)' : 'var(--muted)', marginTop:'4px' }}>
+          {isRecent(m.activity[0].last_seen) ? '🟢 Active' : `Last seen ${timeAgo(m.activity[0].last_seen)}`}
+        </div>
+      )}
+    </div>
+  </div>
+))}
 
   async function loadMembers(fid) {
     const { data } = await supabase

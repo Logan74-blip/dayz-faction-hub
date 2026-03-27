@@ -245,6 +245,20 @@ export default function Settings({ session }) {
           </div>
           <div style={{ display:'flex', gap:'8px' }}>
             <button className="btn btn-green" onClick={saveSettings}>{saved ? '✓ Saved!' : 'Save Settings'}</button>
+            {settings.webhook_url && (
+  <div style={{ borderTop:'1px solid var(--border)', paddingTop:'14px', display:'flex', flexDirection:'column', gap:'10px' }}>
+    <h4 style={{ fontWeight:700, fontSize:'14px' }}>📊 Faction Reports</h4>
+    <p style={{ fontSize:'13px', color:'var(--muted)' }}>Send a summary report to your Discord channel</p>
+    <div style={{ display:'flex', gap:'8px' }}>
+      <button className="btn btn-ghost" style={{ fontSize:'13px' }} onClick={() => sendReport('daily')}>
+        Send Daily Report
+      </button>
+      <button className="btn btn-ghost" style={{ fontSize:'13px' }} onClick={() => sendReport('weekly')}>
+        Send Weekly Report
+      </button>
+    </div>
+  </div>
+)}
             {settings.webhook_url && <button className="btn btn-ghost" onClick={testWebhook}>Test</button>}
           </div>
         </div>
@@ -297,4 +311,54 @@ export default function Settings({ session }) {
       </div>
     </div>
   )
+}
+async function sendReport(type) {
+  if (!settings.webhook_url || !faction) return
+
+  const [members, territories, raids, bounties, announcements] = await Promise.all([
+    supabase.from('faction_members').select('id', { count:'exact' }).eq('faction_id', faction.id),
+    supabase.from('territories').select('id', { count:'exact' }).eq('faction_id', faction.id),
+    supabase.from('raids').select('id', { count:'exact' }).eq('faction_id', faction.id),
+    supabase.from('bounties').select('id', { count:'exact' }).eq('faction_id', faction.id).eq('status', 'completed'),
+    supabase.from('announcements').select('id', { count:'exact' }).eq('faction_id', faction.id),
+  ])
+
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  const { data: recentRaids } = await supabase.from('raids').select('title, outcome, scheduled_at').eq('faction_id', faction.id).gte('scheduled_at', weekAgo).order('scheduled_at', { ascending: false }).limit(5)
+  const { data: recentEvents } = await supabase.from('events').select('title, created_at').eq('faction_id', faction.id).gte('created_at', weekAgo).order('created_at', { ascending: false }).limit(5)
+
+  const isWeekly = type === 'weekly'
+  const title = isWeekly ? `📊 Weekly Faction Report — ${faction.name}` : `📋 Daily Summary — ${faction.name}`
+
+  const fields = [
+    { name:'👥 Members', value:`${members.count || 0}`, inline:true },
+    { name:'🗺️ Territories', value:`${territories.count || 0}`, inline:true },
+    { name:'⚔️ Total Raids', value:`${raids.count || 0}`, inline:true },
+    { name:'🎯 Bounties Collected', value:`${bounties.count || 0}`, inline:true },
+  ]
+
+  if (isWeekly && recentRaids?.length) {
+    fields.push({ name:'⚔️ Recent Operations', value: recentRaids.map(r => `• ${r.title} ${r.outcome === 'success' ? '✅' : r.outcome === 'fail' ? '❌' : '⏳'}`).join('\n') || 'None' })
+  }
+
+  if (isWeekly && recentEvents?.length) {
+    fields.push({ name:'📝 Recent Activity', value: recentEvents.map(e => `• ${e.title}`).join('\n') || 'None' })
+  }
+
+  await fetch(settings.webhook_url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      embeds: [{
+        title,
+        color: 0x4ade80,
+        fields,
+        footer: { text: `Faction Hub • ${new Date().toLocaleDateString()}` },
+        timestamp: new Date().toISOString()
+      }]
+    })
+  }).catch(() => {})
+
+  await supabase.from('faction_reports').insert({ faction_id: faction.id, type, summary: { members: members.count, territories: territories.count, raids: raids.count } })
+  alert(`${isWeekly ? 'Weekly' : 'Daily'} report sent to Discord!`)
 }

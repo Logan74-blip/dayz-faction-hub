@@ -17,8 +17,11 @@ import Bounties from './pages/Bounties'
 import EventLog from './pages/EventLog'
 import FactionProfile from './pages/FactionProfile'
 import FactionVsFaction from './pages/FactionVsFaction'
+import Achievements from './pages/Achievements'
+import JoinRequests from './pages/JoinRequests'
 import Navbar from './components/Navbar'
 import ProtectedRoute from './components/ProtectedRoute'
+import ActivityTracker from './components/ActivityTracker'
 
 export default function App() {
   const [session, setSession] = useState(undefined)
@@ -38,6 +41,7 @@ export default function App() {
   return (
     <>
       {session && <Navbar session={session} />}
+      {session && <ActivityTracker session={session} />}
       <Routes>
         <Route path="/login" element={!session ? <Login /> : <Navigate to="/" />} />
         <Route path="/invite/:code" element={<Invite session={session} />} />
@@ -55,6 +59,8 @@ export default function App() {
         <Route path="/eventlog" element={<ProtectedRoute session={session}><EventLog session={session} /></ProtectedRoute>} />
         <Route path="/faction/:id" element={<ProtectedRoute session={session}><FactionProfile session={session} /></ProtectedRoute>} />
         <Route path="/versus" element={<ProtectedRoute session={session}><FactionVsFaction session={session} /></ProtectedRoute>} />
+        <Route path="/achievements" element={<ProtectedRoute session={session}><Achievements session={session} /></ProtectedRoute>} />
+        <Route path="/join-requests" element={<ProtectedRoute session={session}><JoinRequests session={session} /></ProtectedRoute>} />
       </Routes>
     </>
   )

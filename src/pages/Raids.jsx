@@ -4,6 +4,8 @@ import { Plus, Trash2, Calendar, MapPin, Users } from 'lucide-react'
 import { useRole } from '../hooks/useRole'
 
 export default function Raids({ session }) {
+    const [templates, setTemplates] = useState([])
+const [showTemplates, setShowTemplates] = useState(false)
   const [faction, setFaction] = useState(null)
   const [raids, setRaids] = useState([])
   const [rsvps, setRsvps] = useState({})
@@ -13,6 +15,15 @@ export default function Raids({ session }) {
   const userId = session.user.id
 
   useEffect(() => { loadFaction() }, [])
+  async function loadTemplates(fid) {
+  const { data } = await supabase.from('raid_templates').select('*').eq('faction_id', fid)
+  setTemplates(data || [])
+  if (data?.factions) { 
+  setFaction(data.factions)
+  loadRaids(data.factions.id)
+  loadTemplates(data.factions.id)
+}
+}
 
   async function loadFaction() {
     const { data } = await supabase.from('faction_members').select('*, factions(*)').eq('user_id', userId).maybeSingle()
