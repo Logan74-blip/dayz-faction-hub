@@ -75,3 +75,50 @@ input:focus, textarea:focus, select:focus {
 .tag-green { background: #14532d; color: var(--green); }
 .tag-red { background: #450a0a; color: var(--red); }
 .tag-yellow { background: #451a03; color: var(--yellow); }
+/* Mobile responsive */
+@media (max-width: 768px) {
+  nav {
+    padding: 0 8px !important;
+    height: 48px !important;
+  }
+
+  nav span[style*="FACTION HUB"] {
+    font-size: 13px !important;
+  }
+
+  .card {
+    padding: 14px !important;
+  }
+
+  div[style*="maxWidth:900"],
+  div[style*="maxWidth:800"],
+  div[style*="maxWidth:700"],
+  div[style*="maxWidth:960"] {
+    padding: 0 12px !important;
+    margin-top: 20px !important;
+  }
+
+  div[style*="gridTemplateColumns"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  div[style*="repeat(auto-fit"] {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  h1[style*="fontSize:'24px'"],
+  h1[style*="fontSize:'26px'"] {
+    font-size: 20px !important;
+  }
+
+  button.btn {
+    padding: 7px 12px !important;
+    font-size: 13px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  div[style*="repeat(auto-fit"] {
+    grid-template-columns: 1fr !important;
+  }
+}
