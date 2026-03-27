@@ -1,8 +1,5 @@
-// DayZ Faction Hub Discord Bot
-// Deploy this separately on Railway.app (free tier)
-
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require('discord.js')
-const { createClient } = require('@supabase/supabase-js')
+import { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } from 'discord.js'
+import { createClient } from '@supabase/supabase-js'
 
 const DISCORD_TOKEN = process.env.DISCORD_BOT_TOKEN
 const CLIENT_ID = process.env.DISCORD_CLIENT_ID
@@ -12,7 +9,6 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 const client = new Client({ intents: [GatewayIntentBits.Guilds] })
 
-// Define slash commands
 const commands = [
   new SlashCommandBuilder().setName('faction').setDescription('Get your faction info'),
   new SlashCommandBuilder().setName('raids').setDescription('See upcoming raids'),
@@ -39,7 +35,6 @@ client.on('ready', async () => {
 
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return
-
   const faction = await getFactionByDiscordId(interaction.user.id)
 
   if (!faction) {
@@ -78,11 +73,7 @@ client.on('interactionCreate', async interaction => {
       embeds: [{
         title:'⚔️ Upcoming Raids',
         color: 0xf87171,
-        fields: data.map(r => ({
-          name: r.title,
-          value: `📍 ${r.target_location || 'TBD'}\n📅 ${new Date(r.scheduled_at).toLocaleString()}`,
-          inline: false
-        })),
+        fields: data.map(r => ({ name: r.title, value: `📍 ${r.target_location || 'TBD'}\n📅 ${new Date(r.scheduled_at).toLocaleString()}`, inline: false })),
         footer: { text:'Faction Hub' }
       }]
     })
@@ -95,11 +86,7 @@ client.on('interactionCreate', async interaction => {
       embeds: [{
         title:'🎯 Active Bounties',
         color: 0xfbbf24,
-        fields: data.map(b => ({
-          name: `🎯 ${b.target_name}`,
-          value: `💰 Reward: ${b.reward}${b.description ? `\n${b.description}` : ''}`,
-          inline: false
-        })),
+        fields: data.map(b => ({ name: `🎯 ${b.target_name}`, value: `💰 Reward: ${b.reward}${b.description ? `\n${b.description}` : ''}`, inline: false })),
         footer: { text:'Faction Hub' }
       }]
     })
@@ -130,11 +117,7 @@ client.on('interactionCreate', async interaction => {
       embeds: [{
         title:'🤝 Active Diplomacy',
         color: 0x818cf8,
-        fields: data.map(d => ({
-          name: d.type === 'nap' ? '🤝 NAP' : d.type === 'war' ? '💀 War' : '🛒 Trade',
-          value: `${d.faction_a_info?.name} ↔ ${d.faction_b_info?.name}`,
-          inline: false
-        })),
+        fields: data.map(d => ({ name: d.type === 'nap' ? '🤝 NAP' : d.type === 'war' ? '💀 War' : '🛒 Trade', value: `${d.faction_a_info?.name} ↔ ${d.faction_b_info?.name}`, inline: false })),
         footer: { text:'Faction Hub' }
       }]
     })
@@ -149,11 +132,7 @@ client.on('interactionCreate', async interaction => {
       embeds: [{
         title:`👥 ${faction.name} Members (${data.length})`,
         color: 0x4ade80,
-        fields: Object.entries(grouped).filter(([,v]) => v.length > 0).map(([role, names]) => ({
-          name: `${role.charAt(0).toUpperCase() + role.slice(1)} (${names.length})`,
-          value: names.join(', ').slice(0, 1024) || 'None',
-          inline: false
-        })),
+        fields: Object.entries(grouped).filter(([,v]) => v.length > 0).map(([role, names]) => ({ name: `${role.charAt(0).toUpperCase() + role.slice(1)} (${names.length})`, value: names.join(', ').slice(0, 1024) || 'None', inline: false })),
         footer: { text:'Faction Hub' }
       }]
     })
@@ -166,11 +145,7 @@ client.on('interactionCreate', async interaction => {
       embeds: [{
         title:'💀 War Status',
         color: 0xf87171,
-        fields: data.map(w => ({
-          name:`${w.faction_a_info?.name} vs ${w.faction_b_info?.name}`,
-          value: `Declared: ${new Date(w.created_at).toLocaleDateString()}${w.terms ? `\n${w.terms}` : ''}`,
-          inline: false
-        })),
+        fields: data.map(w => ({ name:`${w.faction_a_info?.name} vs ${w.faction_b_info?.name}`, value: `Declared: ${new Date(w.created_at).toLocaleDateString()}${w.terms ? `\n${w.terms}` : ''}`, inline: false })),
         footer: { text:'Faction Hub' }
       }]
     })
