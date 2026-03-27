@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../supabaseClient'
-import { Map, Package, Shield, LayoutDashboard, LogOut, Sword, Swords, Settings, Globe, Bell, Megaphone, Trophy, ShoppingBag, Target, Activity } from 'lucide-react'
+import { Map, Package, Shield, LayoutDashboard, LogOut, Sword, Swords, Settings, Globe, Bell, Megaphone, Trophy, ShoppingBag, Target, Activity, Star, UserPlus } from 'lucide-react'
 
 const links = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -27,7 +27,6 @@ export default function Navbar({ session }) {
   const name = session?.user?.user_metadata?.full_name || session?.user?.email
   const [notifications, setNotifications] = useState([])
   const [showBell, setShowBell] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
   const bellRef = useRef(null)
   const userId = session.user.id
 
@@ -92,7 +91,6 @@ export default function Navbar({ session }) {
           ☢ FACTION HUB
         </span>
 
-        {/* Desktop links */}
         <div style={{ display:'flex', gap:'1px', overflowX:'auto', flex:1 }} className="hide-scrollbar">
           {links.map(({ to, label, icon: Icon }) => (
             <NavLink key={to} to={to} end={to==='/'} style={({ isActive }) => ({
@@ -109,7 +107,6 @@ export default function Navbar({ session }) {
         </div>
 
         <div style={{ display:'flex', alignItems:'center', gap:'8px', flexShrink:0, marginLeft:'8px' }}>
-          {/* Bell */}
           <div ref={bellRef} style={{ position:'relative' }}>
             <button onClick={() => setShowBell(s => !s)} style={{
               background:'transparent', border:'none', color: unread > 0 ? 'var(--green)' : 'var(--muted)',
@@ -167,7 +164,6 @@ export default function Navbar({ session }) {
           </button>
         </div>
       </nav>
-
       <style>{`.hide-scrollbar::-webkit-scrollbar{display:none}.hide-scrollbar{-ms-overflow-style:none;scrollbar-width:none}`}</style>
     </>
   )
