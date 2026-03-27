@@ -98,12 +98,11 @@ export default function Settings({ session }) {
         <p style={{ color:'var(--muted)', marginTop:'4px' }}>{faction.name}</p>
       </div>
 
-      {/* Faction Info */}
       <div className="card" style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
         <h3 style={{ display:'flex', alignItems:'center', gap:'8px', fontWeight:700, fontSize:'16px' }}>
           <Server size={16} color="var(--green)" /> Faction Info
         </h3>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 120px', gap:'10px' }}>
+        <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
           <div>
             <label style={{ fontSize:'12px', color:'var(--muted)', display:'block', marginBottom:'4px' }}>SERVER</label>
             <ServerSelect value={factionForm.server_name} onChange={v => setFactionForm(f => ({...f, server_name:v}))} />
@@ -126,7 +125,6 @@ export default function Settings({ session }) {
         </button>
       </div>
 
-      {/* Invite Link */}
       <div className="card" style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
         <h3 style={{ display:'flex', alignItems:'center', gap:'8px', fontWeight:700, fontSize:'16px' }}>
           <Link size={16} color="var(--green)" /> Invite Link
@@ -152,7 +150,6 @@ export default function Settings({ session }) {
         )}
       </div>
 
-      {/* Discord Notifications */}
       <div className="card" style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
         <h3 style={{ display:'flex', alignItems:'center', gap:'8px', fontWeight:700, fontSize:'16px' }}>
           <Bell size={16} color="var(--green)" /> Discord Notifications
@@ -180,7 +177,6 @@ export default function Settings({ session }) {
         </div>
       </div>
 
-      {/* Members */}
       <div className="card" style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
         <h3 style={{ fontWeight:700, fontSize:'16px' }}>Members ({members.length})</h3>
         {members.map(m => (
