@@ -25,6 +25,8 @@ import WarRoom from './pages/WarRoom'
 import AllianceNetwork from './pages/AllianceNetwork'
 import ServerCalendar from './pages/ServerCalendar'
 import Treasury from './pages/Treasury'
+import AdminDashboard from './pages/AdminDashboard'
+import Customize from './pages/Customize'
 import Navbar from './components/Navbar'
 import ProtectedRoute from './components/ProtectedRoute'
 import ActivityTracker from './components/ActivityTracker'
@@ -73,6 +75,8 @@ export default function App() {
         <Route path="/alliance-network" element={<ProtectedRoute session={session}><AllianceNetwork session={session} /></ProtectedRoute>} />
         <Route path="/server-calendar" element={<ProtectedRoute session={session}><ServerCalendar session={session} /></ProtectedRoute>} />
         <Route path="/treasury" element={<ProtectedRoute session={session}><Treasury session={session} /></ProtectedRoute>} />
+        <Route path="/admin" element={<ProtectedRoute session={session}><AdminDashboard session={session} /></ProtectedRoute>} />
+        <Route path="/customize" element={<ProtectedRoute session={session}><Customize session={session} /></ProtectedRoute>} />
       </Routes>
     </>
   )
