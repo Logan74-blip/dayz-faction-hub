@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { ShoppingBag, Plus, Trash2, Tag } from 'lucide-react'
+import { ShoppingBag, Plus, MessageSquare, Check, X } from 'lucide-react'
 
 const CATEGORIES = ['Weapons', 'Ammo', 'Medical', 'Food & Water', 'Vehicles', 'Base Materials', 'Territory', 'Services', 'Other']
 const TYPES = [
@@ -11,9 +11,12 @@ const TYPES = [
 export default function Trading({ session }) {
   const [faction, setFaction] = useState(null)
   const [trades, setTrades] = useState([])
+  const [offers, setOffers] = useState({})
   const [filter, setFilter] = useState('all')
   const [catFilter, setCatFilter] = useState('All')
   const [showForm, setShowForm] = useState(false)
+  const [expandedTrade, setExpandedTrade] = useState(null)
+  const [offerText, setOfferText] = useState('')
   const [form, setForm] = useState({ title:'', description:'', category:'Weapons', trade_type:'offer' })
   const userId = session.user.id
 
@@ -33,16 +36,20 @@ export default function Trading({ session }) {
     setTrades(data || [])
   }
 
+  async function loadOffers(tradeId) {
+    const { data } = await supabase.from('trade_offers')
+      .select('*, profile:profiles!trade_offers_created_by_fkey(discord_username, discord_avatar), from_faction:factions!trade_offers_from_faction_id_fkey(name,tag)')
+      .eq('trade_id', tradeId)
+      .order('created_at', { ascending: true })
+    setOffers(o => ({...o, [tradeId]: data || []}))
+  }
+
   async function post() {
     if (!form.title.trim() || !faction) return
     const { data, error } = await supabase.from('trades').insert({
-      faction_id: faction.id,
-      created_by: userId,
-      title: form.title,
-      description: form.description,
-      category: form.category,
-      trade_type: form.trade_type,
-      status: 'open'
+      faction_id: faction.id, created_by: userId,
+      title: form.title, description: form.description,
+      category: form.category, trade_type: form.trade_type, status: 'open'
     }).select('*, factions(name, tag), profile:profiles!trades_created_by_fkey(discord_username, discord_avatar)').single()
     if (!error) {
       setTrades(t => [data, ...t])
@@ -54,6 +61,55 @@ export default function Trading({ session }) {
   async function closeTrade(id) {
     await supabase.from('trades').update({ status:'closed' }).eq('id', id)
     setTrades(t => t.filter(x => x.id !== id))
+  }
+
+  async function sendOffer(tradeId, ownerId) {
+    if (!offerText.trim() || !faction) return
+    const { data, error } = await supabase.from('trade_offers').insert({
+      trade_id: tradeId,
+      from_faction_id: faction.id,
+      offer_text: offerText.trim(),
+      created_by: userId,
+      status: 'pending'
+    }).select('*, profile:profiles!trade_offers_created_by_fkey(discord_username, discord_avatar), from_faction:factions!trade_offers_from_faction_id_fkey(name,tag)').single()
+
+    if (!error) {
+      setOffers(o => ({...o, [tradeId]: [...(o[tradeId] || []), data]}))
+      setOfferText('')
+      // Notify trade owner
+      const trade = trades.find(t => t.id === tradeId)
+      if (trade) {
+        await supabase.from('notifications').insert({
+          faction_id: trade.faction_id,
+          user_id: ownerId,
+          type: 'trade',
+          title: `🛒 New offer on: ${trade.title}`,
+          body: `${faction.name}: ${offerText.slice(0, 60)}`
+        })
+      }
+    }
+  }
+
+  async function respondToOffer(offerId, tradeId, accept) {
+    await supabase.from('trade_offers').update({ status: accept ? 'accepted' : 'declined' }).eq('id', offerId)
+    setOffers(o => ({
+      ...o,
+      [tradeId]: o[tradeId].map(x => x.id === offerId ? {...x, status: accept ? 'accepted' : 'declined'} : x)
+    }))
+    if (accept) {
+      await supabase.from('trades').update({ status:'closed' }).eq('id', tradeId)
+      setTrades(t => t.filter(x => x.id !== tradeId))
+    }
+  }
+
+  function toggleExpand(tradeId) {
+    if (expandedTrade === tradeId) {
+      setExpandedTrade(null)
+    } else {
+      setExpandedTrade(tradeId)
+      loadOffers(tradeId)
+    }
+    setOfferText('')
   }
 
   const filtered = trades.filter(t => {
@@ -124,29 +180,100 @@ export default function Trading({ session }) {
       <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
         {filtered.map(t => {
           const typeMeta = TYPES.find(x => x.value === t.trade_type) || TYPES[0]
-          const isOwn = t.created_by === userId
+          const isOwn = t.faction_id === faction?.id
+          const isExpanded = expandedTrade === t.id
+          const tradeOffers = offers[t.id] || []
           return (
-            <div key={t.id} className="card" style={{ display:'flex', gap:'14px', borderLeft:`3px solid ${typeMeta.color}` }}>
-              <div style={{ flex:1 }}>
-                <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap', marginBottom:'4px' }}>
-                  <span style={{ background:typeMeta.bg, color:typeMeta.color, padding:'2px 8px', borderRadius:'999px', fontSize:'11px', fontWeight:700 }}>
-                    {typeMeta.label}
-                  </span>
-                  <span className="tag tag-yellow" style={{ fontSize:'11px' }}>{t.category}</span>
-                  <span style={{ fontWeight:700, fontSize:'15px' }}>{t.title}</span>
+            <div key={t.id} className="card" style={{ display:'flex', flexDirection:'column', gap:'0', borderLeft:`3px solid ${typeMeta.color}` }}>
+              <div style={{ display:'flex', gap:'14px', padding:'2px 0 10px' }}>
+                <div style={{ flex:1 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap', marginBottom:'4px' }}>
+                    <span style={{ background:typeMeta.bg, color:typeMeta.color, padding:'2px 8px', borderRadius:'999px', fontSize:'11px', fontWeight:700 }}>
+                      {typeMeta.label}
+                    </span>
+                    <span className="tag tag-yellow" style={{ fontSize:'11px' }}>{t.category}</span>
+                    <span style={{ fontWeight:700, fontSize:'15px' }}>{t.title}</span>
+                  </div>
+                  {t.description && <p style={{ fontSize:'13px', color:'var(--muted)', margin:'4px 0 8px' }}>{t.description}</p>}
+                  <div style={{ display:'flex', alignItems:'center', gap:'8px', fontSize:'12px', color:'var(--muted)' }}>
+                    {t.profile?.discord_avatar && <img src={t.profile.discord_avatar} style={{ width:18, height:18, borderRadius:'50%' }} />}
+                    <span>{t.factions?.tag ? `${t.factions.tag} ` : ''}{t.factions?.name}</span>
+                    <span>•</span>
+                    <span>{new Date(t.created_at).toLocaleDateString()}</span>
+                  </div>
                 </div>
-                {t.description && <p style={{ fontSize:'13px', color:'var(--muted)', margin:'4px 0 8px' }}>{t.description}</p>}
-                <div style={{ display:'flex', alignItems:'center', gap:'8px', fontSize:'12px', color:'var(--muted)' }}>
-                  {t.profile?.discord_avatar && <img src={t.profile.discord_avatar} style={{ width:18, height:18, borderRadius:'50%' }} />}
-                  <span>{t.factions?.tag ? `${t.factions.tag} ` : ''}{t.factions?.name}</span>
-                  <span>•</span>
-                  <span>{new Date(t.created_at).toLocaleDateString()}</span>
+                <div style={{ display:'flex', gap:'6px', alignItems:'flex-start', flexShrink:0 }}>
+                  {!isOwn && faction && (
+                    <button onClick={() => toggleExpand(t.id)} className="btn btn-ghost" style={{ fontSize:'12px', padding:'5px 10px', display:'flex', alignItems:'center', gap:'4px' }}>
+                      <MessageSquare size={12} /> {tradeOffers.length > 0 ? `${tradeOffers.length} offers` : 'Make Offer'}
+                    </button>
+                  )}
+                  {isOwn && (
+                    <button onClick={() => toggleExpand(t.id)} className="btn btn-ghost" style={{ fontSize:'12px', padding:'5px 10px', display:'flex', alignItems:'center', gap:'4px' }}>
+                      <MessageSquare size={12} /> {tradeOffers.length} offers
+                    </button>
+                  )}
+                  {isOwn && (
+                    <button onClick={() => closeTrade(t.id)} className="btn btn-ghost" style={{ fontSize:'12px', padding:'5px 10px', color:'var(--red)' }}>
+                      Close
+                    </button>
+                  )}
                 </div>
               </div>
-              {isOwn && (
-                <button onClick={() => closeTrade(t.id)} className="btn btn-ghost" style={{ alignSelf:'flex-start', padding:'6px 12px', fontSize:'12px', color:'var(--red)' }}>
-                  Close
-                </button>
+
+              {/* Negotiation panel */}
+              {isExpanded && (
+                <div style={{ borderTop:'1px solid var(--border)', paddingTop:'12px', display:'flex', flexDirection:'column', gap:'10px' }}>
+                  {tradeOffers.length === 0 && <p style={{ fontSize:'13px', color:'var(--muted)', textAlign:'center', padding:'10px' }}>No offers yet. Be the first!</p>}
+
+                  {tradeOffers.map(offer => (
+                    <div key={offer.id} style={{
+                      padding:'10px 12px', background:'#0d1a0d', borderRadius:'6px',
+                      border:`1px solid ${offer.status === 'accepted' ? 'var(--green)' : offer.status === 'declined' ? 'var(--red)' : 'var(--border)'}`
+                    }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:'8px' }}>
+                        <div style={{ flex:1 }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'4px' }}>
+                            {offer.profile?.discord_avatar && <img src={offer.profile.discord_avatar} style={{ width:18, height:18, borderRadius:'50%' }} />}
+                            <span style={{ fontSize:'12px', fontWeight:600 }}>{offer.from_faction?.tag || ''} {offer.from_faction?.name}</span>
+                            {offer.status !== 'pending' && (
+                              <span style={{ fontSize:'11px', color: offer.status === 'accepted' ? 'var(--green)' : 'var(--red)', fontWeight:700 }}>
+                                {offer.status === 'accepted' ? '✅ Accepted' : '❌ Declined'}
+                              </span>
+                            )}
+                          </div>
+                          <p style={{ fontSize:'13px', color:'var(--text)', margin:0 }}>{offer.offer_text}</p>
+                          <div style={{ fontSize:'11px', color:'var(--muted)', marginTop:'4px' }}>{new Date(offer.created_at).toLocaleString()}</div>
+                        </div>
+                        {isOwn && offer.status === 'pending' && (
+                          <div style={{ display:'flex', gap:'6px', flexShrink:0 }}>
+                            <button onClick={() => respondToOffer(offer.id, t.id, true)} className="btn btn-green" style={{ padding:'4px 10px', fontSize:'12px', display:'flex', alignItems:'center', gap:'4px' }}>
+                              <Check size={12} /> Accept
+                            </button>
+                            <button onClick={() => respondToOffer(offer.id, t.id, false)} className="btn btn-ghost" style={{ padding:'4px 8px', fontSize:'12px' }}>
+                              <X size={12} color="var(--red)" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+
+                  {!isOwn && faction && (
+                    <div style={{ display:'flex', gap:'8px', marginTop:'4px' }}>
+                      <input
+                        placeholder="Type your offer or counter-offer..."
+                        value={offerText}
+                        onChange={e => setOfferText(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && sendOffer(t.id, t.created_by)}
+                        style={{ flex:1 }}
+                      />
+                      <button className="btn btn-green" style={{ whiteSpace:'nowrap', fontSize:'13px' }} onClick={() => sendOffer(t.id, t.created_by)}>
+                        Send Offer
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )

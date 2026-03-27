@@ -53,28 +53,60 @@ export default function Resources({ session }) {
   }
 
   async function runOcr(imageData) {
-    setOcrLoading(true)
-    setOcrResults([])
-    try {
-      const Tesseract = await import('tesseract.js')
-      const { data: { text } } = await Tesseract.recognize(imageData, 'eng', {
-        logger: () => {}
-      })
-      const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 2)
-      const items = lines.map(line => {
-        const qtyMatch = line.match(/x(\d+)|(\d+)x/i)
-        const qty = qtyMatch ? parseInt(qtyMatch[1] || qtyMatch[2]) : 1
-        const name = line.replace(/x\d+|\d+x/i, '').replace(/[^a-zA-Z\s\-]/g, '').trim()
-        if (name.length < 2) return null
-        return { name, quantity: qty, category: guessCategory(name), selected: true }
-      }).filter(Boolean)
-      setOcrResults(items)
-      setSelectedOcr(items.map((_, i) => i))
-    } catch (err) {
-      alert('OCR failed. Try a clearer screenshot.')
-    }
-    setOcrLoading(false)
+  setOcrLoading(true)
+  setOcrResults([])
+  try {
+    const Tesseract = await import('tesseract.js')
+    const { data: { text } } = await Tesseract.recognize(imageData, 'eng', {
+      logger: () => {},
+      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 -_.()',
+      tessedit_pageseg_mode: '6',
+    })
+
+    // Clean and parse lines
+    const lines = text
+      .split('\n')
+      .map(l => l.trim())
+      .filter(l => l.length > 2 && l.length < 60)
+      .filter(l => !/^[0-9\s\-_\.]+$/.test(l)) // skip lines that are just numbers
+
+    const items = lines.map(line => {
+      // Extract quantity — look for patterns like "x5", "5x", "(5)", "x 5"
+      const qtyMatch = line.match(/[xX]\s*(\d+)|(\d+)\s*[xX]|\((\d+)\)|^\s*(\d+)\s+/i)
+      const qty = qtyMatch ? parseInt(qtyMatch[1] || qtyMatch[2] || qtyMatch[3] || qtyMatch[4]) : 1
+
+      // Clean name — remove qty patterns and special chars
+      const name = line
+        .replace(/[xX]\s*\d+|\d+\s*[xX]|\(\d+\)/gi, '')
+        .replace(/[^a-zA-Z\s\-\.]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+
+      if (name.length < 2) return null
+      return {
+        name: name.charAt(0).toUpperCase() + name.slice(1),
+        quantity: Math.min(Math.max(qty, 1), 9999),
+        category: guessCategory(name),
+        selected: true
+      }
+    }).filter(Boolean)
+
+    // Deduplicate by name
+    const seen = new Set()
+    const unique = items.filter(item => {
+      const key = item.name.toLowerCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+
+    setOcrResults(unique)
+    setSelectedOcr(unique.map((_, i) => i))
+  } catch (err) {
+    alert('OCR failed. Try a clearer screenshot with good lighting and readable text.')
   }
+  setOcrLoading(false)
+}
 
   function guessCategory(name) {
     const n = name.toLowerCase()

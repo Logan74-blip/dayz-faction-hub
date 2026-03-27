@@ -73,11 +73,25 @@ export default function FactionProfile({ session }) {
   }
 
   async function saveName() {
-    if (!newName.trim() || newName === faction.name) { setEditingName(false); return }
-    await supabase.from('factions').update({ name: newName.trim() }).eq('id', id)
-    setFaction(f => ({...f, name: newName.trim()}))
-    setEditingName(false)
-  }
+  if (!newName.trim() || newName === faction.name) { setEditingName(false); return }
+  const oldName = faction.name
+  await supabase.from('factions').update({ name: newName.trim() }).eq('id', id)
+  await supabase.from('faction_name_history').insert({
+    faction_id: id,
+    old_name: oldName,
+    new_name: newName.trim(),
+    changed_by: session.user.id
+  })
+  await supabase.from('events').insert({
+    faction_id: id,
+    created_by: session.user.id,
+    type: 'custom',
+    title: `Faction renamed: ${oldName} → ${newName.trim()}`,
+    description: `Name changed by leadership`
+  })
+  setFaction(f => ({...f, name: newName.trim()}))
+  setEditingName(false)
+}
 
   async function saveNote(targetUserId) {
     const existing = notes[targetUserId]
@@ -243,6 +257,10 @@ export default function FactionProfile({ session }) {
         </div>
       </div>
 
+{/* Name History */}
+{canManage && (
+  <NameHistory factionId={id} />
+)}
       {/* Share link */}
       <div className="card" style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 20px' }}>
         <div>
@@ -255,6 +273,43 @@ export default function FactionProfile({ session }) {
           Copy Link
         </button>
       </div>
+    </div>
+  )
+}
+function NameHistory({ factionId }) {
+  const [history, setHistory] = useState([])
+  const [show, setShow] = useState(false)
+
+  useEffect(() => {
+    if (show) {
+      supabase.from('faction_name_history')
+        .select('*, profile:profiles!faction_name_history_changed_by_fkey(discord_username)')
+        .eq('faction_id', factionId)
+        .order('created_at', { ascending: false })
+        .then(({ data }) => setHistory(data || []))
+    }
+  }, [show, factionId])
+
+  return (
+    <div className="card">
+      <button onClick={() => setShow(s => !s)} style={{ background:'transparent', border:'none', color:'var(--muted)', cursor:'pointer', fontSize:'13px', display:'flex', alignItems:'center', gap:'6px' }}>
+        📜 {show ? 'Hide' : 'Show'} Name History ({history.length})
+      </button>
+      {show && (
+        <div style={{ marginTop:'12px', display:'flex', flexDirection:'column', gap:'6px' }}>
+          {history.length === 0 && <p style={{ fontSize:'12px', color:'var(--muted)' }}>No name changes recorded.</p>}
+          {history.map(h => (
+            <div key={h.id} style={{ fontSize:'13px', display:'flex', gap:'8px', alignItems:'center', padding:'6px 0', borderBottom:'1px solid var(--border)' }}>
+              <span style={{ color:'var(--muted)' }}>{h.old_name}</span>
+              <span style={{ color:'var(--green)' }}>→</span>
+              <span style={{ fontWeight:600 }}>{h.new_name}</span>
+              <span style={{ color:'var(--muted)', fontSize:'11px', marginLeft:'auto' }}>
+                by {h.profile?.discord_username} • {new Date(h.created_at).toLocaleDateString()}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

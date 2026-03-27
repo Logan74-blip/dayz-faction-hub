@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../supabaseClient'
-import { Map, Package, Shield, LayoutDashboard, LogOut, Sword, Swords, Settings, Globe, Bell, Megaphone, Trophy, ShoppingBag, Target, Activity, Star, UserPlus, MessageSquare, Flame, Network, Calendar, Server } from 'lucide-react'
+import { Map, Package, Shield, LayoutDashboard, LogOut, Sword, Swords, Settings, Globe, Bell, Megaphone, Trophy, ShoppingBag, Target, Activity, Star, UserPlus, MessageSquare, Flame, Network, Calendar, Coins } from 'lucide-react'
 
 const links = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -12,6 +12,7 @@ const links = [
   { to: '/eventlog', label: 'Event Log', icon: Activity },
   { to: '/bounties', label: 'Bounties', icon: Target },
   { to: '/trading', label: 'Trading', icon: ShoppingBag },
+  { to: '/treasury', label: 'Treasury', icon: Coins },
   { to: '/resources', label: 'Resources', icon: Package },
   { to: '/diplomacy', label: 'Diplomacy', icon: Shield },
   { to: '/messages', label: 'Messages', icon: MessageSquare },
