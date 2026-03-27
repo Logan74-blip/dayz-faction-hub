@@ -9,6 +9,7 @@ import Diplomacy from './pages/Diplomacy'
 import Raids from './pages/Raids'
 import Invite from './pages/Invite'
 import Settings from './pages/Settings'
+import Directory from './pages/Directory'
 import Navbar from './components/Navbar'
 import ProtectedRoute from './components/ProtectedRoute'
 
@@ -39,6 +40,7 @@ export default function App() {
         <Route path="/diplomacy" element={<ProtectedRoute session={session}><Diplomacy session={session} /></ProtectedRoute>} />
         <Route path="/raids" element={<ProtectedRoute session={session}><Raids session={session} /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute session={session}><Settings session={session} /></ProtectedRoute>} />
+        <Route path="/directory" element={<ProtectedRoute session={session}><Directory session={session} /></ProtectedRoute>} />
       </Routes>
     </>
   )
