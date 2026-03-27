@@ -30,10 +30,8 @@ export default function Directory({ session }) {
       if (!groups[server]) groups[server] = []
       groups[server].push(f)
     })
-    // Sort each group alphabetically
     Object.keys(groups).forEach(s => groups[s].sort((a,b) => a.name.localeCompare(b.name)))
     setGrouped(groups)
-    // Expand all by default
     const expanded = {}
     Object.keys(groups).forEach(s => expanded[s] = true)
     setExpandedServers(expanded)
@@ -64,7 +62,6 @@ export default function Directory({ session }) {
         <p style={{ color:'var(--muted)', marginTop:'4px' }}>All factions grouped by server</p>
       </div>
 
-      {/* Search */}
       <div style={{ position:'relative' }}>
         <Search size={16} style={{ position:'absolute', left:'12px', top:'50%', transform:'translateY(-50%)', color:'var(--muted)' }} />
         <input
@@ -77,40 +74,14 @@ export default function Directory({ session }) {
 
       {loading && <p style={{ color:'var(--muted)', textAlign:'center' }}>Loading factions...</p>}
 
-      {/* Search results */}
       {filtered && (
         <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
           <p style={{ color:'var(--muted)', fontSize:'13px' }}>{filtered.length} result{filtered.length !== 1 ? 's' : ''}</p>
-          function FactionCard({ faction }) {
-            {grouped[server].map(f => <FactionCard key={f.id} faction={f} navigate={navigate} />)}
-            {filtered.map(f => <FactionCard key={f.id} faction={f} navigate={navigate} />)}
-  const navigate = useNavigate()
-  const memberCount = faction.faction_members?.[0]?.count || 0
-  return (
-    <div className="card" onClick={() => navigate(`/faction/${faction.id}`)} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 18px', cursor:'pointer', transition:'border-color 0.15s' }}
-      onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--green-dim)'}
-      onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
-    >
-      <div style={{ display:'flex', flexDirection:'column', gap:'4px' }}>
-        <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-          {faction.tag && <span style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'13px' }}>{faction.tag}</span>}
-          <span style={{ fontWeight:700, fontSize:'16px' }}>{faction.name}</span>
-          {faction.is_recruiting && <span className="tag tag-green" style={{ fontSize:'11px' }}>Recruiting</span>}
-        </div>
-        {faction.description && <p style={{ fontSize:'13px', color:'var(--muted)', margin:0 }}>{faction.description}</p>}
-      </div>
-      <div style={{ display:'flex', alignItems:'center', gap:'6px', color:'var(--muted)', fontSize:'13px', whiteSpace:'nowrap' }}>
-        <Users size={13} />
-        {memberCount} member{memberCount !== 1 ? 's' : ''}
-      </div>
-    </div>
-  )
-}
+          {filtered.map(f => <FactionCard key={f.id} faction={f} navigate={navigate} />)}
           {filtered.length === 0 && <p style={{ color:'var(--muted)', textAlign:'center', padding:'32px' }}>No factions found matching "{search}"</p>}
         </div>
       )}
 
-      {/* Grouped by server */}
       {!filtered && sortedServers.map(server => (
         <div key={server}>
           <button
@@ -133,7 +104,7 @@ export default function Directory({ session }) {
 
           {expandedServers[server] && (
             <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
-              {grouped[server].map(f => <FactionCard key={f.id} faction={f} />)}
+              {grouped[server].map(f => <FactionCard key={f.id} faction={f} navigate={navigate} />)}
             </div>
           )}
         </div>
@@ -151,7 +122,10 @@ export default function Directory({ session }) {
 function FactionCard({ faction, navigate }) {
   const memberCount = faction.faction_members?.[0]?.count || 0
   return (
-    <div className="card" onClick={() => navigate(`/faction/${faction.id}`)} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 18px', cursor:'pointer', transition:'border-color 0.15s' }}
+    <div
+      className="card"
+      onClick={() => navigate(`/faction/${faction.id}`)}
+      style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 18px', cursor:'pointer', transition:'border-color 0.15s' }}
       onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--green-dim)'}
       onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
     >
