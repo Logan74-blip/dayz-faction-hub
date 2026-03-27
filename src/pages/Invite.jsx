@@ -54,10 +54,18 @@ export default function Invite({ session }) {
 
     // Join faction
     const { error } = await supabase.from('faction_members').insert({
-      faction_id: invite.faction_id,
-      user_id: session.user.id,
-      role: 'member'
-    })
+  faction_id: invite.faction_id,
+  user_id: session.user.id,
+  role: 'member'
+})
+
+if (!error) {
+  await supabase.from('member_history').insert({
+    faction_id: invite.faction_id,
+    user_id: session.user.id,
+    action: 'joined'
+  })
+}
 
     if (!error) {
       await supabase.from('invites').update({ uses: invite.uses + 1 }).eq('id', invite.id)
