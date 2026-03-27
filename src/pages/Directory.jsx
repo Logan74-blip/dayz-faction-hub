@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { Search, Users, Server, ChevronDown, ChevronUp } from 'lucide-react'
+import { Search, Users, Server, ChevronDown, ChevronUp } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 
 export default function Directory({ session }) {
   const [factions, setFactions] = useState([])
@@ -79,7 +81,29 @@ export default function Directory({ session }) {
       {filtered && (
         <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
           <p style={{ color:'var(--muted)', fontSize:'13px' }}>{filtered.length} result{filtered.length !== 1 ? 's' : ''}</p>
-          {filtered.map(f => <FactionCard key={f.id} faction={f} />)}
+          function FactionCard({ faction }) {
+  const navigate = useNavigate()
+  const memberCount = faction.faction_members?.[0]?.count || 0
+  return (
+    <div className="card" onClick={() => navigate(`/faction/${faction.id}`)} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 18px', cursor:'pointer', transition:'border-color 0.15s' }}
+      onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--green-dim)'}
+      onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+    >
+      <div style={{ display:'flex', flexDirection:'column', gap:'4px' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+          {faction.tag && <span style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'13px' }}>{faction.tag}</span>}
+          <span style={{ fontWeight:700, fontSize:'16px' }}>{faction.name}</span>
+          {faction.is_recruiting && <span className="tag tag-green" style={{ fontSize:'11px' }}>Recruiting</span>}
+        </div>
+        {faction.description && <p style={{ fontSize:'13px', color:'var(--muted)', margin:0 }}>{faction.description}</p>}
+      </div>
+      <div style={{ display:'flex', alignItems:'center', gap:'6px', color:'var(--muted)', fontSize:'13px', whiteSpace:'nowrap' }}>
+        <Users size={13} />
+        {memberCount} member{memberCount !== 1 ? 's' : ''}
+      </div>
+    </div>
+  )
+}
           {filtered.length === 0 && <p style={{ color:'var(--muted)', textAlign:'center', padding:'32px' }}>No factions found matching "{search}"</p>}
         </div>
       )}

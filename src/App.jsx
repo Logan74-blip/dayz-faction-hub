@@ -15,6 +15,8 @@ import Leaderboard from './pages/Leaderboard'
 import Trading from './pages/Trading'
 import Bounties from './pages/Bounties'
 import EventLog from './pages/EventLog'
+import FactionProfile from './pages/FactionProfile'
+import FactionVsFaction from './pages/FactionVsFaction'
 import Navbar from './components/Navbar'
 import ProtectedRoute from './components/ProtectedRoute'
 
@@ -51,6 +53,8 @@ export default function App() {
         <Route path="/trading" element={<ProtectedRoute session={session}><Trading session={session} /></ProtectedRoute>} />
         <Route path="/bounties" element={<ProtectedRoute session={session}><Bounties session={session} /></ProtectedRoute>} />
         <Route path="/eventlog" element={<ProtectedRoute session={session}><EventLog session={session} /></ProtectedRoute>} />
+        <Route path="/faction/:id" element={<ProtectedRoute session={session}><FactionProfile session={session} /></ProtectedRoute>} />
+        <Route path="/versus" element={<ProtectedRoute session={session}><FactionVsFaction session={session} /></ProtectedRoute>} />
       </Routes>
     </>
   )

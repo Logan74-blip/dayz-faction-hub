@@ -17,6 +17,7 @@ export default function Raids({ session }) {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ title:'', target_location:'', scheduled_at:'', description:'' })
   const userId = session.user.id
+  const { perms } = useRole(session.user.id)
 
   useEffect(() => { loadFaction() }, [])
 
@@ -100,7 +101,103 @@ export default function Raids({ session }) {
   }
 
   const upcoming = raids.filter(r => new Date(r.scheduled_at) >= new Date())
-  const past = raids.filter(r => new Date(r.scheduled_at) < new Date())
+  {past.length > 0 && (
+  <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
+    <h3 style={{ fontFamily:'Share Tech Mono', color:'var(--muted)', fontSize:'14px', letterSpacing:'0.1em' }}>PAST OPERATIONS</h3>
+    {past.map(raid => {
+      const [debriefOpen, setDebriefOpen] = useState(false)
+      const [debrief, setDebrief] = useState({
+        outcome: raid.outcome || '',
+        casualties: raid.casualties || 0,
+        loot_summary: raid.loot_summary || '',
+        debrief_notes: raid.debrief_notes || '',
+        rating: raid.rating || 0
+      })
+
+      async function saveDebrief(raidId) {
+        await supabase.from('raids').update(debrief).eq('id', raidId)
+        setRaids(r => r.map(x => x.id === raidId ? {...x, ...debrief} : x))
+        setDebriefOpen(false)
+        await supabase.from('events').insert({
+          faction_id: faction.id,
+          created_by: userId,
+          type: 'raid',
+          title: `Raid Debrief: ${raid.title}`,
+          description: `Outcome: ${debrief.outcome} | Casualties: ${debrief.casualties} | ${debrief.loot_summary}`
+        })
+      }
+
+      return (
+        <div key={raid.id} className="card" style={{ borderLeft:'3px solid var(--border)', display:'flex', flexDirection:'column', gap:'10px', opacity: raid.outcome ? 0.8 : 1 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <div>
+              <span style={{ fontWeight:700 }}>{raid.title}</span>
+              {raid.target_location && <span style={{ color:'var(--muted)', fontSize:'13px', marginLeft:'10px' }}>{raid.target_location}</span>}
+              <div style={{ fontSize:'12px', color:'var(--muted)', marginTop:'2px' }}>{new Date(raid.scheduled_at).toLocaleString()}</div>
+            </div>
+            <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
+              {raid.outcome && (
+                <span style={{ fontSize:'13px', color: raid.outcome==='success' ? 'var(--green)' : 'var(--red)' }}>
+                  {raid.outcome==='success' ? '✅ Success' : '❌ Failed'}
+                </span>
+              )}
+              {raid.rating && <span style={{ color:'var(--yellow)' }}>{'⭐'.repeat(raid.rating)}</span>}
+              {perms.raids && (
+                <button onClick={() => setDebriefOpen(d => !d)} className="btn btn-ghost" style={{ fontSize:'12px', padding:'4px 10px' }}>
+                  {raid.outcome ? 'Edit Debrief' : '📋 Debrief'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {debriefOpen && perms.raids && (
+            <div style={{ background:'#0d1a0d', border:'1px solid var(--green-dim)', borderRadius:'6px', padding:'14px', display:'flex', flexDirection:'column', gap:'10px' }}>
+              <h4 style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'13px' }}>OPERATION DEBRIEF</h4>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
+                <div>
+                  <label style={{ fontSize:'12px', color:'var(--muted)', display:'block', marginBottom:'4px' }}>OUTCOME</label>
+                  <select value={debrief.outcome} onChange={e => setDebrief(d => ({...d, outcome:e.target.value}))}>
+                    <option value="">Select outcome...</option>
+                    <option value="success">✅ Success</option>
+                    <option value="partial">⚠️ Partial Success</option>
+                    <option value="fail">❌ Failed</option>
+                    <option value="aborted">🚫 Aborted</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize:'12px', color:'var(--muted)', display:'block', marginBottom:'4px' }}>CASUALTIES</label>
+                  <input type="number" min={0} value={debrief.casualties} onChange={e => setDebrief(d => ({...d, casualties:parseInt(e.target.value)||0}))} />
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize:'12px', color:'var(--muted)', display:'block', marginBottom:'4px' }}>LOOT SUMMARY</label>
+                <input placeholder="e.g. 3x AK-74, 5x medical kits, vehicle parts..." value={debrief.loot_summary} onChange={e => setDebrief(d => ({...d, loot_summary:e.target.value}))} />
+              </div>
+              <div>
+                <label style={{ fontSize:'12px', color:'var(--muted)', display:'block', marginBottom:'4px' }}>NOTES</label>
+                <textarea placeholder="What went well? What to improve?" value={debrief.debrief_notes} onChange={e => setDebrief(d => ({...d, debrief_notes:e.target.value}))} rows={2} />
+              </div>
+              <div>
+                <label style={{ fontSize:'12px', color:'var(--muted)', display:'block', marginBottom:'6px' }}>RATING</label>
+                <div style={{ display:'flex', gap:'4px' }}>
+                  {[1,2,3,4,5].map(n => (
+                    <button key={n} onClick={() => setDebrief(d => ({...d, rating:n}))} style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:'20px' }}>
+                      {n <= debrief.rating ? '⭐' : '☆'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ display:'flex', gap:'8px' }}>
+                <button className="btn btn-green" onClick={() => saveDebrief(raid.id)}>Save Debrief</button>
+                <button className="btn btn-ghost" onClick={() => setDebriefOpen(false)}>Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )
+    })}
+  </div>
+)}
 
   return (
     <div style={{ maxWidth:900, margin:'40px auto', padding:'0 24px', display:'flex', flexDirection:'column', gap:'24px' }}>
@@ -109,11 +206,11 @@ export default function Raids({ session }) {
           <h1 style={{ fontFamily:'Share Tech Mono', fontSize:'24px', color:'var(--green)' }}>RAID PLANNER</h1>
           <p style={{ color:'var(--muted)', marginTop:'4px' }}>Schedule operations and track attendance</p>
         </div>
-        {faction && (
-          <button className="btn btn-green" style={{ display:'flex', alignItems:'center', gap:'8px' }} onClick={() => setShowForm(f => !f)}>
-            <Plus size={15} /> Schedule Raid
-          </button>
-        )}
+        {faction && perms.raids && (
+  <button className="btn btn-green" style={{ display:'flex', alignItems:'center', gap:'8px' }} onClick={() => setShowForm(f => !f)}>
+    <Plus size={15} /> Schedule Raid
+  </button>
+)}
       </div>
 
       {showForm && (
