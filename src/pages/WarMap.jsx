@@ -75,13 +75,18 @@ useEffect(() => {
   }
 
   function handleMapClick(e) {
-    if (!faction || dragging) return
-    const rect = mapRef.current.getBoundingClientRect()
-    const x = ((e.clientX - rect.left) / rect.width) * 100
-    const y = ((e.clientY - rect.top) / rect.height) * 100
-    setPending({ x, y })
-    setForm({ label: '', type: 'base', notes: '' })
+  if (!faction) {
+    alert('You need to be in a faction to place markers.')
+    return
   }
+  if (!mapRef.current) return
+  const rect = mapRef.current.getBoundingClientRect()
+  const x = ((e.clientX - rect.left) / rect.width) * 100
+  const y = ((e.clientY - rect.top) / rect.height) * 100
+  if (x < 0 || x > 100 || y < 0 || y > 100) return
+  setPending({ x, y })
+  setForm({ label:'', type:'base', notes:'' })
+}
 
   async function saveMarker() {
   if (!form.label.trim() || !faction) return
@@ -142,11 +147,12 @@ useEffect(() => {
   }
 
   function onMouseUp(e) {
-    if (!dragStart) return
-    if (!dragging) handleMapClick(e)
-    setDragStart(null)
-    setTimeout(() => setDragging(false), 50)
-  }
+  if (!dragStart) return
+  const moved = Math.abs(e.clientX - (dragStart.x + offset.x)) > 5 || Math.abs(e.clientY - (dragStart.y + offset.y)) > 5
+  if (!moved) handleMapClick(e)
+  setDragStart(null)
+  setTimeout(() => setDragging(false), 50)
+}
 
   const filteredMarkers = markers.filter(m => (m.map_id || 'chernarus') === selectedMap.id)
 
