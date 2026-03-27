@@ -6,6 +6,9 @@ import Dashboard from './pages/Dashboard'
 import WarMap from './pages/WarMap'
 import Resources from './pages/Resources'
 import Diplomacy from './pages/Diplomacy'
+import Raids from './pages/Raids'
+import Invite from './pages/Invite'
+import Settings from './pages/Settings'
 import Navbar from './components/Navbar'
 import ProtectedRoute from './components/ProtectedRoute'
 
@@ -29,10 +32,13 @@ export default function App() {
       {session && <Navbar session={session} />}
       <Routes>
         <Route path="/login" element={!session ? <Login /> : <Navigate to="/" />} />
+        <Route path="/invite/:code" element={<Invite session={session} />} />
         <Route path="/" element={<ProtectedRoute session={session}><Dashboard session={session} /></ProtectedRoute>} />
         <Route path="/map" element={<ProtectedRoute session={session}><WarMap session={session} /></ProtectedRoute>} />
         <Route path="/resources" element={<ProtectedRoute session={session}><Resources session={session} /></ProtectedRoute>} />
         <Route path="/diplomacy" element={<ProtectedRoute session={session}><Diplomacy session={session} /></ProtectedRoute>} />
+        <Route path="/raids" element={<ProtectedRoute session={session}><Raids session={session} /></ProtectedRoute>} />
+        <Route path="/settings" element={<ProtectedRoute session={session}><Settings session={session} /></ProtectedRoute>} />
       </Routes>
     </>
   )

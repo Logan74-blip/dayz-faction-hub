@@ -1,12 +1,14 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
-import { Map, Package, Shield, LayoutDashboard, LogOut } from 'lucide-react'
+import { Map, Package, Shield, LayoutDashboard, LogOut, Sword, Settings } from 'lucide-react'
 
 const links = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/map', label: 'War Map', icon: Map },
+  { to: '/raids', label: 'Raids', icon: Sword },
   { to: '/resources', label: 'Resources', icon: Package },
   { to: '/diplomacy', label: 'Diplomacy', icon: Shield },
+  { to: '/settings', label: 'Settings', icon: Settings },
 ]
 
 export default function Navbar({ session }) {
@@ -27,27 +29,25 @@ export default function Navbar({ session }) {
       alignItems: 'center',
       padding: '0 24px',
       height: '56px',
-      gap: '8px',
+      gap: '4px',
       position: 'sticky',
       top: 0,
       zIndex: 100
     }}>
-      <span style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'18px', marginRight:'24px', letterSpacing:'0.1em' }}>
+      <span style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'18px', marginRight:'16px', letterSpacing:'0.1em' }}>
         ☢ FACTION HUB
       </span>
-
       {links.map(({ to, label, icon: Icon }) => (
         <NavLink key={to} to={to} end={to==='/'} style={({ isActive }) => ({
           display: 'flex', alignItems: 'center', gap: '6px',
-          padding: '6px 14px', borderRadius: '4px', fontSize: '14px', fontWeight: 600,
+          padding: '6px 12px', borderRadius: '4px', fontSize: '13px', fontWeight: 600,
           color: isActive ? 'var(--green)' : 'var(--muted)',
           background: isActive ? '#14532d33' : 'transparent',
           transition: 'all 0.15s'
         })}>
-          <Icon size={15} /> {label}
+          <Icon size={14} /> {label}
         </NavLink>
       ))}
-
       <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:'12px' }}>
         {avatar && <img src={avatar} style={{ width:28, height:28, borderRadius:'50%', border:'1px solid var(--border)' }} />}
         <span style={{ fontSize:'13px', color:'var(--muted)' }}>{name}</span>
