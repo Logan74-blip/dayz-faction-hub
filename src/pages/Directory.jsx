@@ -9,6 +9,7 @@ export default function Directory({ session }) {
   const [search, setSearch] = useState('')
   const [expandedServers, setExpandedServers] = useState({})
   const [loading, setLoading] = useState(true)
+  const navigate = useNavigate()
 
   useEffect(() => { loadFactions() }, [])
 
@@ -81,6 +82,8 @@ export default function Directory({ session }) {
         <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
           <p style={{ color:'var(--muted)', fontSize:'13px' }}>{filtered.length} result{filtered.length !== 1 ? 's' : ''}</p>
           function FactionCard({ faction }) {
+            {grouped[server].map(f => <FactionCard key={f.id} faction={f} navigate={navigate} />)}
+            {filtered.map(f => <FactionCard key={f.id} faction={f} navigate={navigate} />)}
   const navigate = useNavigate()
   const memberCount = faction.faction_members?.[0]?.count || 0
   return (
@@ -145,11 +148,13 @@ export default function Directory({ session }) {
   )
 }
 
-function FactionCard({ faction }) {
-    const navigate = useNavigate()
+function FactionCard({ faction, navigate }) {
   const memberCount = faction.faction_members?.[0]?.count || 0
   return (
-    <div className="card" style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 18px' }}>
+    <div className="card" onClick={() => navigate(`/faction/${faction.id}`)} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 18px', cursor:'pointer', transition:'border-color 0.15s' }}
+      onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--green-dim)'}
+      onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+    >
       <div style={{ display:'flex', flexDirection:'column', gap:'4px' }}>
         <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
           {faction.tag && <span style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'13px' }}>{faction.tag}</span>}
