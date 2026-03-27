@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { Search, Users, Server, ChevronDown, ChevronUp } from 'lucide-react'
-import { Search, Users, Server, ChevronDown, ChevronUp } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 export default function Directory({ session }) {
