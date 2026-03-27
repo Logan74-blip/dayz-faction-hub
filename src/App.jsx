@@ -10,6 +10,11 @@ import Raids from './pages/Raids'
 import Invite from './pages/Invite'
 import Settings from './pages/Settings'
 import Directory from './pages/Directory'
+import Announcements from './pages/Announcements'
+import Leaderboard from './pages/Leaderboard'
+import Trading from './pages/Trading'
+import Bounties from './pages/Bounties'
+import EventLog from './pages/EventLog'
 import Navbar from './components/Navbar'
 import ProtectedRoute from './components/ProtectedRoute'
 
@@ -41,6 +46,11 @@ export default function App() {
         <Route path="/raids" element={<ProtectedRoute session={session}><Raids session={session} /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute session={session}><Settings session={session} /></ProtectedRoute>} />
         <Route path="/directory" element={<ProtectedRoute session={session}><Directory session={session} /></ProtectedRoute>} />
+        <Route path="/announcements" element={<ProtectedRoute session={session}><Announcements session={session} /></ProtectedRoute>} />
+        <Route path="/leaderboard" element={<ProtectedRoute session={session}><Leaderboard session={session} /></ProtectedRoute>} />
+        <Route path="/trading" element={<ProtectedRoute session={session}><Trading session={session} /></ProtectedRoute>} />
+        <Route path="/bounties" element={<ProtectedRoute session={session}><Bounties session={session} /></ProtectedRoute>} />
+        <Route path="/eventlog" element={<ProtectedRoute session={session}><EventLog session={session} /></ProtectedRoute>} />
       </Routes>
     </>
   )
