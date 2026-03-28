@@ -82,6 +82,7 @@ export default function Settings({ session }) {
   async function saveFaction() {
   if (!faction || !canEdit) return
   const serverToSave = serverInput.trim()
+  console.log('Saving is_recruiting:', form.is_recruiting, typeof form.is_recruiting)
   const { error } = await supabase.from('factions').update({
     name: form.name,
     tag: form.tag,
@@ -278,7 +279,7 @@ export default function Settings({ session }) {
             <input
               type="checkbox"
               checked={form.is_recruiting}
-              onChange={e => setForm(f => ({...f, is_recruiting:e.target.checked}))}
+              onChange={e => setForm(f => ({...f, is_recruiting: e.target.checked === true}))}
               style={{ width:'auto', accentColor:'var(--green)' }}
             />
             Open for recruitment
