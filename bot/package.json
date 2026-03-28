@@ -1,0 +1,22 @@
+{
+  "name": "dayz-faction-hub-bot",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.0.0",
+    "@supabase/supabase-js": "^2.0.0"
+  }
+}
+```
+
+Press **Ctrl+S**
+
+---
+
+**Step 3** — Go to **Railway** → click your service → click **Settings** tab → find **Root Directory** → type:
+```
+/bot
