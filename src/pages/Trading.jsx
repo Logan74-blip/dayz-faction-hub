@@ -45,18 +45,26 @@ export default function Trading({ session }) {
   }
 
   async function post() {
-    if (!form.title.trim() || !faction) return
-    const { data, error } = await supabase.from('trades').insert({
-      faction_id: faction.id, created_by: userId,
-      title: form.title, description: form.description,
-      category: form.category, trade_type: form.trade_type, status: 'open'
-    }).select('*, factions(name, tag), profile:profiles!trades_created_by_fkey(discord_username, discord_avatar)').single()
-    if (!error) {
-      setTrades(t => [data, ...t])
-      setForm({ title:'', description:'', category:'Weapons', trade_type:'offer' })
-      setShowForm(false)
-    }
+  if (!form.title.trim() || !faction) return
+  const { data, error } = await supabase.from('trades').insert({
+    faction_id: faction.id, created_by: userId,
+    title: form.title, description: form.description,
+    category: form.category, trade_type: form.trade_type, status: 'open'
+  }).select('*, factions(name, tag), profile:profiles!trades_created_by_fkey(discord_username, discord_avatar)').single()
+  if (!error) {
+    setTrades(t => [data, ...t])
+    setForm({ title:'', description:'', category:'Weapons', trade_type:'offer' })
+    setShowForm(false)
+    // Log to activity
+    await supabase.from('activity_log').insert({
+      faction_id: faction.id,
+      user_id: userId,
+      action_type: 'trade_post',
+      description: `Posted trade listing: ${form.title} (${form.trade_type === 'offer' ? 'Offering' : 'Looking For'})`,
+      metadata: { title: form.title, type: form.trade_type, category: form.category }
+    })
   }
+}
 
   async function closeTrade(id) {
     await supabase.from('trades').update({ status:'closed' }).eq('id', id)

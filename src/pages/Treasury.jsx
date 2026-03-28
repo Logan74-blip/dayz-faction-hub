@@ -25,22 +25,30 @@ export default function Treasury({ session }) {
   }
 
   async function addTransaction() {
-    if (!form.item_name.trim()) return
-    const { data, error } = await supabase.from('treasury').insert({
+  if (!form.item_name.trim()) return
+  const { data, error } = await supabase.from('treasury').insert({
+    faction_id: faction.id,
+    created_by: userId,
+    item_name: form.item_name,
+    quantity: Number(form.quantity),
+    category: form.category,
+    transaction_type: form.transaction_type,
+    notes: form.notes
+  }).select('*, profile:profiles!treasury_created_by_fkey(discord_username, discord_avatar)').single()
+  if (!error) {
+    setTransactions(t => [data, ...t])
+    setForm({ item_name:'', quantity:1, category:'Weapons', transaction_type:'deposit', notes:'' })
+    setShowForm(false)
+    // Log to activity
+    await supabase.from('activity_log').insert({
       faction_id: faction.id,
-      created_by: userId,
-      item_name: form.item_name,
-      quantity: Number(form.quantity),
-      category: form.category,
-      transaction_type: form.transaction_type,
-      notes: form.notes
-    }).select('*, profile:profiles!treasury_created_by_fkey(discord_username, discord_avatar)').single()
-    if (!error) {
-      setTransactions(t => [data, ...t])
-      setForm({ item_name:'', quantity:1, category:'Weapons', transaction_type:'deposit', notes:'' })
-      setShowForm(false)
-    }
+      user_id: userId,
+      action_type: form.transaction_type === 'deposit' ? 'treasury_deposit' : 'treasury_withdrawal',
+      description: `${form.transaction_type === 'deposit' ? 'Deposited' : 'Withdrew'} ×${form.quantity} ${form.item_name} ${form.notes ? `(${form.notes})` : ''}`,
+      metadata: { item: form.item_name, quantity: Number(form.quantity), type: form.transaction_type }
+    })
   }
+}
 
   // Calculate current stock per item
   const stockMap = {}
