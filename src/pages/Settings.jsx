@@ -1,39 +1,74 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { Copy, Check, RefreshCw, Bell, Link, Server, Users } from 'lucide-react'
-import ServerSelect from '../components/ServerSelect'
 import { useRole } from '../hooks/useRole'
+import { Save, Link, Copy, RefreshCw, Plus } from 'lucide-react'
 
-const ROLES = ['leader', 'co-leader', 'recruiter', 'member']
-const ROLE_COLORS = { leader:'tag-green', 'co-leader':'tag-green', recruiter:'tag-yellow', member:'tag-yellow' }
-const ROLE_ICONS = { leader:'👑', 'co-leader':'⭐', recruiter:'📋', member:'👤' }
+const OFFICIAL_SERVERS = [
+  'Chernarus Official #1',
+  'Chernarus Official #2',
+  'Livonia Official #1',
+  'Livonia Official #2',
+  'Sakhal Official #1',
+  'Sakhal Official #2',
+]
 
 export default function Settings({ session }) {
-  const { role, faction, perms, loading } = useRole(session.user.id)
+  const { role, faction } = useRole(session.user.id)
+  const [form, setForm] = useState({ name:'', tag:'', description:'', server_name:'', is_recruiting: true })
+  const [settings, setSettings] = useState({ webhook_url:'', notify_raids: true, notify_diplomacy: true, notify_bounties: true, notify_announcements: true })
   const [invite, setInvite] = useState(null)
-  const [copied, setCopied] = useState(false)
-  const [settings, setSettings] = useState({ webhook_url:'', notify_raids:true, notify_diplomacy:true, notify_members:true, notify_war:true })
-  const [factionForm, setFactionForm] = useState({ server_name:'', tag:'', description:'', is_recruiting:true })
   const [saved, setSaved] = useState(false)
-  const [factionSaved, setFactionSaved] = useState(false)
+  const [inviteLoading, setInviteLoading] = useState(false)
+  const [existingServers, setExistingServers] = useState([])
+  const [serverInput, setServerInput] = useState('')
+  const [showCustomInput, setShowCustomInput] = useState(false)
   const [members, setMembers] = useState([])
-  const [changingRole, setChangingRole] = useState(null)
   const userId = session.user.id
+  const canEdit = role === 'leader' || role === 'co-leader'
 
-  useEffect(() => { if (faction) loadData() }, [faction])
+  useEffect(() => {
+    if (faction) {
+      setForm({
+        name: faction.name || '',
+        tag: faction.tag || '',
+        description: faction.description || '',
+        server_name: faction.server_name || '',
+        is_recruiting: faction.is_recruiting ?? true
+      })
+      setServerInput(faction.server_name || '')
+      loadSettings()
+      loadInvite()
+      loadMembers()
+      loadExistingServers()
+    }
+  }, [faction?.id])
 
-  async function loadData() {
-    setFactionForm({
-      server_name: faction.server_name || '',
-      tag: faction.tag || '',
-      description: faction.description || '',
-      is_recruiting: faction.is_recruiting ?? true
-    })
-    const { data: inv } = await supabase.from('invites').select('*').eq('faction_id', faction.id).order('created_at', { ascending:false }).limit(1).maybeSingle()
-    setInvite(inv)
-    const { data: notif } = await supabase.from('notification_settings').select('*').eq('faction_id', faction.id).maybeSingle()
-    if (notif) setSettings(notif)
-    loadMembers()
+  async function loadExistingServers() {
+    const { data } = await supabase
+      .from('factions')
+      .select('server_name')
+      .not('server_name', 'is', null)
+      .neq('server_name', '')
+    const names = [...new Set((data || []).map(f => f.server_name).filter(Boolean))]
+    setExistingServers(names)
+  }
+
+  async function loadSettings() {
+    const { data } = await supabase
+      .from('notification_settings')
+      .select('*')
+      .eq('faction_id', faction.id)
+      .maybeSingle()
+    if (data) setSettings(data)
+  }
+
+  async function loadInvite() {
+    const { data } = await supabase
+      .from('invites')
+      .select('*')
+      .eq('faction_id', faction.id)
+      .maybeSingle()
+    setInvite(data)
   }
 
   async function loadMembers() {
@@ -45,324 +80,326 @@ export default function Settings({ session }) {
     setMembers(data || [])
   }
 
-  async function saveFactionInfo() {
-    await supabase.from('factions').update(factionForm).eq('id', faction.id)
-    setFactionSaved(true)
-    setTimeout(() => setFactionSaved(false), 2000)
-  }
-
-  async function toggleRecruiting() {
-    const newVal = !factionForm.is_recruiting
-    await supabase.from('factions').update({ is_recruiting: newVal }).eq('id', faction.id)
-    setFactionForm(f => ({...f, is_recruiting: newVal}))
-  }
-
-  async function generateInvite() {
-    const { data, error } = await supabase.from('invites').insert({ faction_id: faction.id, created_by: userId }).select().single()
-    if (!error) setInvite(data)
-  }
-
-  async function regenerateInvite() {
-    if (invite) await supabase.from('invites').delete().eq('id', invite.id)
-    generateInvite()
-  }
-
-  function getInviteUrl() {
-  const base = window.location.origin
-  return `${base}/invite/${invite?.code}`
-}
-
-
-  async function copyInvite() {
-    await navigator.clipboard.writeText(getInviteUrl())
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+  async function saveFaction() {
+    if (!faction || !canEdit) return
+    await supabase.from('factions').update({
+      name: form.name,
+      tag: form.tag,
+      description: form.description,
+      server_name: serverInput.trim(),
+      is_recruiting: form.is_recruiting
+    }).eq('id', faction.id)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+    loadExistingServers()
   }
 
   async function saveSettings() {
-    const { data: existing } = await supabase.from('notification_settings').select('id').eq('faction_id', faction.id).maybeSingle()
+    if (!faction) return
+    const { data: existing } = await supabase
+      .from('notification_settings')
+      .select('id')
+      .eq('faction_id', faction.id)
+      .maybeSingle()
     if (existing) {
-      await supabase.from('notification_settings').update({ ...settings, updated_at: new Date().toISOString() }).eq('faction_id', faction.id)
+      await supabase.from('notification_settings').update(settings).eq('faction_id', faction.id)
     } else {
-      await supabase.from('notification_settings').insert({ ...settings, faction_id: faction.id, created_by: userId })
+      await supabase.from('notification_settings').insert({ ...settings, faction_id: faction.id })
     }
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
 
-  async function testWebhook() {
-    if (!settings.webhook_url) return
-    await fetch(settings.webhook_url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ embeds: [{ title: '☢️ Faction Hub Connected', description: 'Your Discord notifications are working!', color: 0x4ade80, timestamp: new Date().toISOString() }] })
-    }).catch(() => {})
-    alert('Test notification sent!')
+  async function generateInvite() {
+    setInviteLoading(true)
+    const code = Math.random().toString(36).substring(2, 10).toUpperCase()
+    const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    if (invite) {
+      const { data } = await supabase.from('invites').update({ code, expires_at: expires, uses: 0 }).eq('id', invite.id).select().single()
+      setInvite(data)
+    } else {
+      const { data } = await supabase.from('invites').insert({ faction_id: faction.id, code, expires_at: expires, max_uses: 50, uses: 0 }).select().single()
+      setInvite(data)
+    }
+    setInviteLoading(false)
+  }
+
+  async function copyInvite() {
+    const url = `${window.location.origin}/invite/${invite.code}`
+    await navigator.clipboard.writeText(url)
+    alert('Invite link copied!')
+  }
+
+  async function kickMember(memberId) {
+    if (!window.confirm('Remove this member from the faction?')) return
+    await supabase.from('faction_members').delete().eq('id', memberId)
+    await supabase.from('member_history').insert({ faction_id: faction.id, user_id: memberId, action: 'left' })
+    loadMembers()
   }
 
   async function changeRole(memberId, newRole) {
     await supabase.from('faction_members').update({ role: newRole }).eq('id', memberId)
-    setMembers(m => m.map(x => x.id === memberId ? {...x, role: newRole} : x))
-    setChangingRole(null)
+    loadMembers()
+  }
 
-    // Notify the member
-    const member = members.find(m => m.id === memberId)
-    if (member) {
-      await supabase.from('notifications').insert({
-        faction_id: faction.id,
-        user_id: member.user_id,
-        type: 'general',
-        title: 'Your role has been updated',
-        body: `You have been assigned the role: ${newRole}`
-      })
+  async function sendReport(type) {
+    if (!settings.webhook_url || !faction) return
+    const [members, territories, raids, bounties] = await Promise.all([
+      supabase.from('faction_members').select('id', { count:'exact', head:true }).eq('faction_id', faction.id),
+      supabase.from('territories').select('id', { count:'exact', head:true }).eq('faction_id', faction.id),
+      supabase.from('raids').select('id', { count:'exact', head:true }).eq('faction_id', faction.id),
+      supabase.from('bounties').select('id', { count:'exact', head:true }).eq('faction_id', faction.id).eq('status', 'completed'),
+    ])
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    const { data: recentRaids } = await supabase.from('raids').select('title, outcome, scheduled_at').eq('faction_id', faction.id).gte('scheduled_at', weekAgo).order('scheduled_at', { ascending: false }).limit(5)
+    const fields = [
+      { name:'👥 Members', value:`${members.count || 0}`, inline:true },
+      { name:'🗺️ Territories', value:`${territories.count || 0}`, inline:true },
+      { name:'⚔️ Total Raids', value:`${raids.count || 0}`, inline:true },
+      { name:'🎯 Bounties', value:`${bounties.count || 0}`, inline:true },
+    ]
+    if (type === 'weekly' && recentRaids?.length) {
+      fields.push({ name:'⚔️ Recent Raids', value: recentRaids.map(r => `• ${r.title} ${r.outcome === 'success' ? '✅' : r.outcome === 'fail' ? '❌' : '⏳'}`).join('\n') })
     }
+    await fetch(settings.webhook_url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        embeds: [{
+          title: `${type === 'weekly' ? '📊 Weekly' : '📋 Daily'} Report — ${faction.name}`,
+          color: 0x4ade80, fields,
+          footer: { text: `Faction Hub • ${new Date().toLocaleDateString()}` },
+          timestamp: new Date().toISOString()
+        }]
+      })
+    }).catch(() => {})
+    await supabase.from('faction_reports').insert({ faction_id: faction.id, type, summary: { members: members.count, territories: territories.count } })
+    alert(`${type === 'weekly' ? 'Weekly' : 'Daily'} report sent!`)
   }
 
-  async function removeMember(memberId, memberUserId) {
-    await supabase.from('faction_members').delete().eq('id', memberId)
-    await supabase.from('member_history').insert({ faction_id: faction.id, user_id: memberUserId, action: 'left' })
-    await supabase.from('notifications').insert({
-      faction_id: faction.id,
-      user_id: memberUserId,
-      type: 'general',
-      title: 'You have been removed from the faction',
-      body: `You were removed from ${faction.name}`
-    })
-    setMembers(m => m.filter(x => x.id !== memberId))
-  }
-
-  if (loading) return <div style={{ padding:'40px', textAlign:'center', color:'var(--muted)' }}>Loading...</div>
+  // Build the server dropdown list
+  const allServers = [
+    ...OFFICIAL_SERVERS,
+    ...existingServers.filter(s => !OFFICIAL_SERVERS.includes(s))
+  ]
 
   if (!faction) return (
-    <div style={{ maxWidth:600, margin:'80px auto', padding:'0 24px', textAlign:'center', color:'var(--muted)' }}>
-      You need to be in a faction to access settings.
+    <div style={{ padding:'80px', textAlign:'center', color:'var(--muted)' }}>
+      Join or create a faction to access settings.
     </div>
   )
 
   return (
-    <div style={{ maxWidth:700, margin:'40px auto', padding:'0 24px', display:'flex', flexDirection:'column', gap:'24px' }}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-        <div>
-          <h1 style={{ fontFamily:'Share Tech Mono', fontSize:'24px', color:'var(--green)' }}>FACTION SETTINGS</h1>
-          <p style={{ color:'var(--muted)', marginTop:'4px' }}>{faction.name}</p>
-        </div>
-        <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-          <span className={`tag ${ROLE_COLORS[role]}`}>{ROLE_ICONS[role]} {role}</span>
-        </div>
+    <div style={{ maxWidth:800, margin:'40px auto', padding:'0 24px', display:'flex', flexDirection:'column', gap:'24px' }}>
+      <div>
+        <h1 style={{ fontFamily:'Share Tech Mono', fontSize:'24px', color:'var(--green)' }}>FACTION SETTINGS</h1>
+        <p style={{ color:'var(--muted)', marginTop:'4px' }}>Manage your faction info, members and notifications</p>
       </div>
 
-      {/* Recruiting Toggle — visible to leader, co-leader, recruiter */}
-      {perms.recruiting && (
-        <div className="card" style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 20px' }}>
-          <div>
-            <h3 style={{ fontWeight:700, fontSize:'15px' }}>Faction Status</h3>
-            <p style={{ color:'var(--muted)', fontSize:'13px', marginTop:'2px' }}>
-              {factionForm.is_recruiting ? 'Your faction is open to new members' : 'Your faction is currently full'}
-            </p>
-          </div>
-          <button
-            onClick={toggleRecruiting}
-            className={`btn ${factionForm.is_recruiting ? 'btn-green' : 'btn-red'}`}
-            style={{ minWidth:'120px', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px' }}
-          >
-            {factionForm.is_recruiting ? '✅ Recruiting' : '🚫 Full'}
-          </button>
-        </div>
-      )}
-
-      {/* Faction Info — leader and co-leader only */}
-      {(role === 'leader' || role === 'co-leader') && (
+      {/* Faction Info */}
+      {canEdit && (
         <div className="card" style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
-          <h3 style={{ display:'flex', alignItems:'center', gap:'8px', fontWeight:700, fontSize:'16px' }}>
-            <Server size={16} color="var(--green)" /> Faction Info
-          </h3>
-          <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+          <h3 style={{ fontWeight:700, fontSize:'16px' }}>⚙️ Faction Info</h3>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
             <div>
-              <label style={{ fontSize:'12px', color:'var(--muted)', display:'block', marginBottom:'4px' }}>SERVER</label>
-              <ServerSelect value={factionForm.server_name} onChange={v => setFactionForm(f => ({...f, server_name:v}))} />
+              <label style={{ fontSize:'12px', color:'var(--muted)', display:'block', marginBottom:'4px' }}>FACTION NAME</label>
+              <input value={form.name} onChange={e => setForm(f => ({...f, name:e.target.value}))} placeholder="Faction name..." />
             </div>
             <div>
-              <label style={{ fontSize:'12px', color:'var(--muted)', display:'block', marginBottom:'4px' }}>TAG (e.g. [SLAM])</label>
-              <input placeholder="[TAG]" value={factionForm.tag} onChange={e => setFactionForm(f => ({...f, tag:e.target.value}))} maxLength={8} />
+              <label style={{ fontSize:'12px', color:'var(--muted)', display:'block', marginBottom:'4px' }}>TAG (optional)</label>
+              <input value={form.tag} onChange={e => setForm(f => ({...f, tag:e.target.value}))} placeholder="[TAG]" maxLength={8} />
             </div>
           </div>
           <div>
             <label style={{ fontSize:'12px', color:'var(--muted)', display:'block', marginBottom:'4px' }}>DESCRIPTION</label>
-            <textarea placeholder="Tell other factions about your group..." value={factionForm.description} onChange={e => setFactionForm(f => ({...f, description:e.target.value}))} rows={2} />
+            <textarea value={form.description} onChange={e => setForm(f => ({...f, description:e.target.value}))} placeholder="Tell other factions about your group..." rows={2} />
           </div>
-          <button className="btn btn-green" style={{ alignSelf:'flex-start' }} onClick={saveFactionInfo}>
-            {factionSaved ? '✓ Saved!' : 'Save Faction Info'}
+
+          {/* Server selector */}
+          <div>
+            <label style={{ fontSize:'12px', color:'var(--muted)', display:'block', marginBottom:'4px' }}>SERVER</label>
+            {!showCustomInput ? (
+              <div style={{ display:'flex', gap:'8px' }}>
+                <select
+                  value={serverInput}
+                  onChange={e => {
+                    if (e.target.value === '__custom__') {
+                      setShowCustomInput(true)
+                      setServerInput('')
+                    } else {
+                      setServerInput(e.target.value)
+                    }
+                  }}
+                  style={{ flex:1 }}
+                >
+                  <option value="">— No server set —</option>
+                  <optgroup label="Official Servers">
+                    {OFFICIAL_SERVERS.map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </optgroup>
+                  {existingServers.filter(s => !OFFICIAL_SERVERS.includes(s)).length > 0 && (
+                    <optgroup label="Community & Modded Servers">
+                      {existingServers.filter(s => !OFFICIAL_SERVERS.includes(s)).map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  <option value="__custom__">➕ Add a new server...</option>
+                </select>
+              </div>
+            ) : (
+              <div style={{ display:'flex', gap:'8px' }}>
+                <input
+                  autoFocus
+                  placeholder="Type your server name exactly as it appears in-game..."
+                  value={serverInput}
+                  onChange={e => setServerInput(e.target.value)}
+                  style={{ flex:1 }}
+                />
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => { setShowCustomInput(false); setServerInput(faction.server_name || '') }}
+                  style={{ fontSize:'12px' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+            <p style={{ fontSize:'11px', color:'var(--muted)', marginTop:'6px' }}>
+              {showCustomInput
+                ? '⚠️ Type carefully — other factions will see this exact name and can join your server group'
+                : 'Community servers only appear here if another faction has added them. Use "Add a new server" to add yours.'
+              }
+            </p>
+          </div>
+
+          <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+            <label style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer', fontSize:'14px' }}>
+              <input
+                type="checkbox"
+                checked={form.is_recruiting}
+                onChange={e => setForm(f => ({...f, is_recruiting:e.target.checked}))}
+                style={{ width:'auto', accentColor:'var(--green)' }}
+              />
+              Open for recruitment
+            </label>
+          </div>
+
+          <button className="btn btn-green" style={{ alignSelf:'flex-start', display:'flex', alignItems:'center', gap:'8px' }} onClick={saveFaction}>
+            <Save size={14} /> {saved ? '✓ Saved!' : 'Save Changes'}
           </button>
         </div>
       )}
 
-      {/* Invite Link — leader, co-leader, recruiter */}
-      {perms.invites && (
+      {/* Invite Link */}
+      {canEdit && (
         <div className="card" style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
-          <h3 style={{ display:'flex', alignItems:'center', gap:'8px', fontWeight:700, fontSize:'16px' }}>
-            <Link size={16} color="var(--green)" /> Invite Link
-          </h3>
-          {!invite ? (
-            <button className="btn btn-green" style={{ alignSelf:'flex-start' }} onClick={generateInvite}>Generate Invite Link</button>
+          <h3 style={{ fontWeight:700, fontSize:'16px' }}>🔗 Invite Link</h3>
+          <p style={{ fontSize:'13px', color:'var(--muted)' }}>Share this link with players you want to recruit. Expires after 7 days or 50 uses.</p>
+          {invite ? (
+            <div style={{ display:'flex', gap:'8px', alignItems:'center', flexWrap:'wrap' }}>
+              <code style={{ background:'#0d1a0d', padding:'8px 12px', borderRadius:'4px', fontSize:'13px', flex:1, wordBreak:'break-all' }}>
+                {window.location.origin}/invite/{invite.code}
+              </code>
+              <button className="btn btn-green" style={{ display:'flex', alignItems:'center', gap:'6px', flexShrink:0 }} onClick={copyInvite}>
+                <Copy size={13} /> Copy
+              </button>
+              <button className="btn btn-ghost" style={{ display:'flex', alignItems:'center', gap:'6px', flexShrink:0 }} onClick={generateInvite}>
+                <RefreshCw size={13} /> New Link
+              </button>
+            </div>
           ) : (
-            <>
-              <div style={{ display:'flex', gap:'8px' }}>
-                <input readOnly value={getInviteUrl()} style={{ flex:1, fontFamily:'Share Tech Mono', fontSize:'12px' }} />
-                <button className="btn btn-green" onClick={copyInvite} style={{ display:'flex', alignItems:'center', gap:'6px', whiteSpace:'nowrap' }}>
-                  {copied ? <><Check size={14} /> Copied!</> : <><Copy size={14} /> Copy</>}
-                </button>
-                <button className="btn btn-ghost" onClick={regenerateInvite} title="Regenerate">
-                  <RefreshCw size={14} />
-                </button>
-              </div>
-              <div style={{ fontSize:'12px', color:'var(--muted)', display:'flex', gap:'16px' }}>
-                <span>Uses: {invite.uses}/{invite.max_uses}</span>
-                <span>Expires: {new Date(invite.expires_at).toLocaleDateString()}</span>
-              </div>
-            </>
+            <button className="btn btn-green" style={{ alignSelf:'flex-start', display:'flex', alignItems:'center', gap:'8px' }} onClick={generateInvite} disabled={inviteLoading}>
+              <Link size={14} /> {inviteLoading ? 'Generating...' : 'Generate Invite Link'}
+            </button>
           )}
         </div>
       )}
 
-      {/* Discord Notifications — leader only */}
-      {role === 'leader' && (
+      {/* Members */}
+      <div className="card" style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
+        <h3 style={{ fontWeight:700, fontSize:'16px' }}>👥 Members ({members.length})</h3>
+        <div style={{ display:'flex', flexDirection:'column', gap:'8px', maxHeight:'400px', overflowY:'auto' }}>
+          {members.map(m => (
+            <div key={m.id} style={{ display:'flex', alignItems:'center', gap:'12px', padding:'8px 12px', background:'var(--surface)', borderRadius:'6px', border:'1px solid var(--border)' }}>
+              {m.profile?.discord_avatar
+                ? <img src={m.profile.discord_avatar} style={{ width:32, height:32, borderRadius:'50%', border:'1px solid var(--border)', flexShrink:0 }} />
+                : <div style={{ width:32, height:32, borderRadius:'50%', background:'var(--border)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>👤</div>
+              }
+              <span style={{ flex:1, fontWeight:600, fontSize:'14px' }}>{m.profile?.discord_username || 'Unknown'}</span>
+              {canEdit && m.user_id !== userId ? (
+                <div style={{ display:'flex', gap:'6px', alignItems:'center' }}>
+                  <select
+                    value={m.role}
+                    onChange={e => changeRole(m.id, e.target.value)}
+                    style={{ fontSize:'12px', padding:'3px 8px', width:'auto' }}
+                  >
+                    <option value="member">Member</option>
+                    <option value="recruiter">Recruiter</option>
+                    <option value="co-leader">Co-Leader</option>
+                    {role === 'leader' && <option value="leader">Leader</option>}
+                  </select>
+                  <button onClick={() => kickMember(m.user_id)} className="btn btn-ghost" style={{ fontSize:'11px', padding:'3px 8px', color:'var(--red)' }}>
+                    Kick
+                  </button>
+                </div>
+              ) : (
+                <span className={`tag ${m.role === 'leader' ? 'tag-green' : 'tag-yellow'}`}>{m.role}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Discord Notifications */}
+      {canEdit && (
         <div className="card" style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
-          <h3 style={{ display:'flex', alignItems:'center', gap:'8px', fontWeight:700, fontSize:'16px' }}>
-            <Bell size={16} color="var(--green)" /> Discord Notifications
-          </h3>
+          <h3 style={{ fontWeight:700, fontSize:'16px' }}>🔔 Discord Notifications</h3>
           <p style={{ fontSize:'13px', color:'var(--muted)' }}>
-            Discord Server → Edit Channel → Integrations → Webhooks → New Webhook → Copy URL
+            Paste a Discord webhook URL to get notifications in your server.
+            <a href="https://support.discord.com/hc/en-us/articles/228383668" target="_blank" rel="noreferrer" style={{ color:'var(--green)', marginLeft:'6px' }}>
+              How to create a webhook →
+            </a>
           </p>
-          <input placeholder="https://discord.com/api/webhooks/..." value={settings.webhook_url} onChange={e => setSettings(s => ({...s, webhook_url:e.target.value}))} />
-          <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+          <input
+            placeholder="https://discord.com/api/webhooks/..."
+            value={settings.webhook_url || ''}
+            onChange={e => setSettings(s => ({...s, webhook_url:e.target.value}))}
+          />
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
             {[
-              { key:'notify_raids', label:'⚔️ Raid scheduled' },
-              { key:'notify_diplomacy', label:'🤝 Diplomacy updates' },
-              { key:'notify_members', label:'👤 New member joins' },
-              { key:'notify_war', label:'💀 War declarations' },
+              { key:'notify_raids', label:'⚔️ Raid notifications' },
+              { key:'notify_diplomacy', label:'🤝 Diplomacy notifications' },
+              { key:'notify_bounties', label:'🎯 Bounty notifications' },
+              { key:'notify_announcements', label:'📣 Announcement notifications' },
             ].map(({ key, label }) => (
-              <label key={key} style={{ display:'flex', alignItems:'center', gap:'10px', cursor:'pointer', fontSize:'14px' }}>
-                <input type="checkbox" checked={settings[key]} onChange={e => setSettings(s => ({...s, [key]:e.target.checked}))} style={{ width:'auto', accentColor:'var(--green)' }} />
+              <label key={key} style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer', fontSize:'13px' }}>
+                <input
+                  type="checkbox"
+                  checked={settings[key] ?? true}
+                  onChange={e => setSettings(s => ({...s, [key]:e.target.checked}))}
+                  style={{ width:'auto', accentColor:'var(--green)' }}
+                />
                 {label}
               </label>
             ))}
           </div>
-          <div style={{ display:'flex', gap:'8px' }}>
-            <button className="btn btn-green" onClick={saveSettings}>{saved ? '✓ Saved!' : 'Save Settings'}</button>
-            {settings.webhook_url && (
-  <div style={{ borderTop:'1px solid var(--border)', paddingTop:'14px', display:'flex', flexDirection:'column', gap:'10px' }}>
-    <h4 style={{ fontWeight:700, fontSize:'14px' }}>📊 Faction Reports</h4>
-    <p style={{ fontSize:'13px', color:'var(--muted)' }}>Send a summary report to your Discord channel</p>
-    <div style={{ display:'flex', gap:'8px' }}>
-      <button className="btn btn-ghost" style={{ fontSize:'13px' }} onClick={() => sendReport('daily')}>
-        Send Daily Report
-      </button>
-      <button className="btn btn-ghost" style={{ fontSize:'13px' }} onClick={() => sendReport('weekly')}>
-        Send Weekly Report
-      </button>
-    </div>
-  </div>
-)}
-            {settings.webhook_url && <button className="btn btn-ghost" onClick={testWebhook}>Test</button>}
-          </div>
+          <button className="btn btn-green" style={{ alignSelf:'flex-start' }} onClick={saveSettings}>
+            {saved ? '✓ Saved!' : 'Save Notification Settings'}
+          </button>
+          {settings.webhook_url && (
+            <div style={{ borderTop:'1px solid var(--border)', paddingTop:'14px', display:'flex', flexDirection:'column', gap:'10px' }}>
+              <h4 style={{ fontWeight:700, fontSize:'14px' }}>📊 Faction Reports</h4>
+              <p style={{ fontSize:'13px', color:'var(--muted)' }}>Send a summary report to your Discord channel</p>
+              <div style={{ display:'flex', gap:'8px' }}>
+                <button className="btn btn-ghost" style={{ fontSize:'13px' }} onClick={() => sendReport('daily')}>Send Daily Report</button>
+                <button className="btn btn-ghost" style={{ fontSize:'13px' }} onClick={() => sendReport('weekly')}>Send Weekly Report</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
-
-      {/* Members */}
-      <div className="card" style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
-        <h3 style={{ display:'flex', alignItems:'center', gap:'8px', fontWeight:700, fontSize:'16px' }}>
-          <Users size={16} color="var(--green)" /> Members ({members.length})
-        </h3>
-        {members.map(m => (
-          <div key={m.id} style={{ display:'flex', alignItems:'center', gap:'12px', padding:'8px 0', borderBottom:'1px solid var(--border)' }}>
-            {m.profile?.discord_avatar ? (
-              <img src={m.profile.discord_avatar} style={{ width:32, height:32, borderRadius:'50%', border:'1px solid var(--border)' }} />
-            ) : (
-              <div style={{ width:32, height:32, borderRadius:'50%', background:'var(--border)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                {ROLE_ICONS[m.role]}
-              </div>
-            )}
-            <div style={{ flex:1 }}>
-              <span style={{ fontSize:'14px', fontWeight:600 }}>{m.profile?.discord_username || 'Unknown'}</span>
-            </div>
-
-            {/* Role badge / changer */}
-            {(perms.kick && m.user_id !== userId) ? (
-              changingRole === m.id ? (
-                <div style={{ display:'flex', gap:'4px', flexWrap:'wrap' }}>
-                  {ROLES.filter(r => r !== 'leader').map(r => (
-                    <button key={r} onClick={() => changeRole(m.id, r)} className="btn btn-ghost" style={{ fontSize:'11px', padding:'3px 8px', color: r === m.role ? 'var(--green)' : 'var(--muted)', border: r === m.role ? '1px solid var(--green)' : '1px solid var(--border)' }}>
-                      {ROLE_ICONS[r]} {r}
-                    </button>
-                  ))}
-                  <button onClick={() => setChangingRole(null)} className="btn btn-ghost" style={{ fontSize:'11px', padding:'3px 8px' }}>✕</button>
-                </div>
-              ) : (
-                <div style={{ display:'flex', gap:'6px', alignItems:'center' }}>
-                  <button onClick={() => setChangingRole(m.id)} className={`tag ${ROLE_COLORS[m.role]}`} style={{ cursor:'pointer', border:'none' }}>
-                    {ROLE_ICONS[m.role]} {m.role}
-                  </button>
-                  <button onClick={() => removeMember(m.id, m.user_id)} className="btn btn-ghost" style={{ fontSize:'12px', padding:'4px 10px', color:'var(--red)' }}>
-                    Kick
-                  </button>
-                </div>
-              )
-            ) : (
-              <span className={`tag ${ROLE_COLORS[m.role]}`}>{ROLE_ICONS[m.role]} {m.role === userId ? 'You' : m.role}</span>
-            )}
-          </div>
-        ))}
-      </div>
     </div>
   )
-}
-async function sendReport(type) {
-  if (!settings.webhook_url || !faction) return
-
-  const [members, territories, raids, bounties, announcements] = await Promise.all([
-    supabase.from('faction_members').select('id', { count:'exact' }).eq('faction_id', faction.id),
-    supabase.from('territories').select('id', { count:'exact' }).eq('faction_id', faction.id),
-    supabase.from('raids').select('id', { count:'exact' }).eq('faction_id', faction.id),
-    supabase.from('bounties').select('id', { count:'exact' }).eq('faction_id', faction.id).eq('status', 'completed'),
-    supabase.from('announcements').select('id', { count:'exact' }).eq('faction_id', faction.id),
-  ])
-
-  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-  const { data: recentRaids } = await supabase.from('raids').select('title, outcome, scheduled_at').eq('faction_id', faction.id).gte('scheduled_at', weekAgo).order('scheduled_at', { ascending: false }).limit(5)
-  const { data: recentEvents } = await supabase.from('events').select('title, created_at').eq('faction_id', faction.id).gte('created_at', weekAgo).order('created_at', { ascending: false }).limit(5)
-
-  const isWeekly = type === 'weekly'
-  const title = isWeekly ? `📊 Weekly Faction Report — ${faction.name}` : `📋 Daily Summary — ${faction.name}`
-
-  const fields = [
-    { name:'👥 Members', value:`${members.count || 0}`, inline:true },
-    { name:'🗺️ Territories', value:`${territories.count || 0}`, inline:true },
-    { name:'⚔️ Total Raids', value:`${raids.count || 0}`, inline:true },
-    { name:'🎯 Bounties Collected', value:`${bounties.count || 0}`, inline:true },
-  ]
-
-  if (isWeekly && recentRaids?.length) {
-    fields.push({ name:'⚔️ Recent Operations', value: recentRaids.map(r => `• ${r.title} ${r.outcome === 'success' ? '✅' : r.outcome === 'fail' ? '❌' : '⏳'}`).join('\n') || 'None' })
-  }
-
-  if (isWeekly && recentEvents?.length) {
-    fields.push({ name:'📝 Recent Activity', value: recentEvents.map(e => `• ${e.title}`).join('\n') || 'None' })
-  }
-
-  await fetch(settings.webhook_url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      embeds: [{
-        title,
-        color: 0x4ade80,
-        fields,
-        footer: { text: `Faction Hub • ${new Date().toLocaleDateString()}` },
-        timestamp: new Date().toISOString()
-      }]
-    })
-  }).catch(() => {})
-
-  await supabase.from('faction_reports').insert({ faction_id: faction.id, type, summary: { members: members.count, territories: territories.count, raids: raids.count } })
-  alert(`${isWeekly ? 'Weekly' : 'Daily'} report sent to Discord!`)
 }
