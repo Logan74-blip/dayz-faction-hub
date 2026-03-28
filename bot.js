@@ -6,9 +6,6 @@ const CLIENT_ID = process.env.DISCORD_CLIENT_ID
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY
 
-if (!SUPABASE_URL) { console.error('Missing SUPABASE_URL'); process.exit(1) }
-if (!DISCORD_TOKEN) { console.error('Missing DISCORD_BOT_TOKEN'); process.exit(1) }
-
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 const client = new Client({ intents: [GatewayIntentBits.Guilds] })
 
