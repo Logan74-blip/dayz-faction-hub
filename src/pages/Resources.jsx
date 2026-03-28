@@ -58,10 +58,12 @@ export default function Resources({ session }) {
   setOcrResults([])
   try {
     const Tesseract = await import('tesseract.js')
-
-    const { data: { text } } = await Tesseract.recognize(imageData, 'eng', {
-      logger: () => {},
-    })
+const { data: { text } } = await Tesseract.recognize(imageData, 'eng', {
+  logger: () => {},
+  workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/worker.min.js',
+  langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+  corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@4/tesseract-core.wasm.js',
+})
 
     const lines = text
       .split('\n')
