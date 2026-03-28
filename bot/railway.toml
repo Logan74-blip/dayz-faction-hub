@@ -1,0 +1,6 @@
+[build]
+buildCommand = "npm ci"
+
+[deploy]
+startCommand = "node index.js"
+restartPolicyType = "always"
