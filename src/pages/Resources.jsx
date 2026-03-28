@@ -57,53 +57,63 @@ export default function Resources({ session }) {
   setOcrResults([])
   try {
     const Tesseract = await import('tesseract.js')
+    const { matchItem } = await import('../dayzItems.js')
+
     const { data: { text } } = await Tesseract.recognize(imageData, 'eng', {
       logger: () => {},
-      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 -_.()',
-      tessedit_pageseg_mode: '6',
     })
 
-    // Clean and parse lines
     const lines = text
       .split('\n')
       .map(l => l.trim())
       .filter(l => l.length > 2 && l.length < 60)
-      .filter(l => !/^[0-9\s\-_\.]+$/.test(l)) // skip lines that are just numbers
 
-    const items = lines.map(line => {
-      // Extract quantity — look for patterns like "x5", "5x", "(5)", "x 5"
-      const qtyMatch = line.match(/[xX]\s*(\d+)|(\d+)\s*[xX]|\((\d+)\)|^\s*(\d+)\s+/i)
-      const qty = qtyMatch ? parseInt(qtyMatch[1] || qtyMatch[2] || qtyMatch[3] || qtyMatch[4]) : 1
+    const seen = new Set()
+    const items = []
 
-      // Clean name — remove qty patterns and special chars
-      const name = line
-        .replace(/[xX]\s*\d+|\d+\s*[xX]|\(\d+\)/gi, '')
-        .replace(/[^a-zA-Z\s\-\.]/g, '')
+    for (const line of lines) {
+      // Extract quantity
+      const qtyMatch = line.match(/[xX×]\s*(\d+)|(\d+)\s*[xX×]|\((\d+)\)/i)
+      const qty = qtyMatch
+        ? parseInt(qtyMatch[1] || qtyMatch[2] || qtyMatch[3])
+        : 1
+
+      // Clean the line for matching
+      const cleaned = line
+        .replace(/[xX×]\s*\d+|\d+\s*[xX×]|\(\d+\)/gi, '')
+        .replace(/[^a-zA-Z0-9\s\-\.]/g, '')
         .replace(/\s+/g, ' ')
         .trim()
 
-      if (name.length < 2) return null
-      return {
-        name: name.charAt(0).toUpperCase() + name.slice(1),
-        quantity: Math.min(Math.max(qty, 1), 9999),
-        category: guessCategory(name),
-        selected: true
-      }
-    }).filter(Boolean)
+      if (cleaned.length < 2) continue
 
-    // Deduplicate by name
-    const seen = new Set()
-    const unique = items.filter(item => {
-      const key = item.name.toLowerCase()
-      if (seen.has(key)) return false
+      const match = matchItem(cleaned)
+      if (!match) continue
+
+      const key = match.name.toLowerCase()
+      if (seen.has(key)) continue
       seen.add(key)
-      return true
+
+      items.push({
+        name: match.name,
+        quantity: Math.min(Math.max(qty, 1), 9999),
+        category: match.category,
+        confidence: match.confidence,
+        possibleMod: match.possibleMod || false,
+        selected: true
+      })
+    }
+
+    // Sort — high confidence first, mod items last
+    items.sort((a, b) => {
+      const order = { high: 0, medium: 1, low: 2, unknown: 3 }
+      return (order[a.confidence] || 3) - (order[b.confidence] || 3)
     })
 
-    setOcrResults(unique)
-    setSelectedOcr(unique.map((_, i) => i))
+    setOcrResults(items)
+    setSelectedOcr(items.map((_, i) => i))
   } catch (err) {
-    alert('OCR failed. Try a clearer screenshot with good lighting and readable text.')
+    alert('OCR failed. Try a clearer screenshot.')
   }
   setOcrLoading(false)
 }
@@ -119,21 +129,32 @@ export default function Resources({ session }) {
     return 'Other'
   }
 
-  async function importOcrItems() {
-    if (!faction) return
-    const toImport = ocrResults.filter((_, i) => selectedOcr.includes(i))
-    for (const item of toImport) {
-      const { data } = await supabase.from('resources').insert({
-        faction_id: faction.id, created_by: userId,
-        name: item.name, category: item.category, quantity: item.quantity
-      }).select().single()
-      if (data) setItems(prev => [...prev, data])
-    }
-    setOcrMode(false)
-    setOcrImage(null)
-    setOcrResults([])
-    setSelectedOcr([])
-  }
+  {ocrResults.map((item, i) => (
+  <div key={i} style={{
+    display:'flex', alignItems:'center', gap:'10px', padding:'8px 12px',
+    background: selectedOcr.includes(i) ? '#0d1a0d' : 'var(--surface)',
+    borderRadius:'6px', border:`1px solid ${item.possibleMod ? 'var(--yellow)' : selectedOcr.includes(i) ? 'var(--green-dim)' : 'var(--border)'}`,
+    cursor:'pointer', opacity: selectedOcr.includes(i) ? 1 : 0.5
+  }} onClick={() => toggleOcrSelect(i)}>
+    <input type="checkbox" checked={selectedOcr.includes(i)} onChange={() => toggleOcrSelect(i)} style={{ width:'auto', accentColor:'var(--green)' }} />
+    <div style={{ flex:1 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+        <span style={{ fontWeight:600, fontSize:'14px' }}>{item.name}</span>
+        {item.possibleMod && <span style={{ fontSize:'11px', color:'var(--yellow)', border:'1px solid var(--yellow)', padding:'1px 6px', borderRadius:'999px' }}>⚡ Possible Mod Item</span>}
+        {item.confidence === 'high' && <span style={{ fontSize:'11px', color:'var(--green)' }}>✓ Matched</span>}
+      </div>
+      <div style={{ fontSize:'12px', color:'var(--muted)', marginTop:'2px' }}>{item.category}</div>
+    </div>
+    <input
+      type="number"
+      value={item.quantity}
+      min={1}
+      onChange={e => setOcrResults(r => r.map((x, idx) => idx === i ? {...x, quantity: parseInt(e.target.value) || 1} : x))}
+      onClick={e => e.stopPropagation()}
+      style={{ width:'60px', textAlign:'center', fontSize:'13px' }}
+    />
+  </div>
+))}
 
   const filtered = filter === 'All' ? items : items.filter(i => i.category === filter)
 
