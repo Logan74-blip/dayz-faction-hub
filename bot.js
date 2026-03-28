@@ -225,9 +225,3 @@ client.login(DISCORD_TOKEN).catch(err => {
   console.error('Failed to login:', err)
   process.exit(1)
 })
-// Keep Railway happy by listening on a port
-import { createServer } from 'http'
-const PORT = process.env.PORT || 3000
-createServer((req, res) => res.end('Bot is running')).listen(PORT, () => {
-  console.log(`✅ Health check listening on port ${PORT}`)
-})
