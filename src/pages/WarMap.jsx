@@ -12,13 +12,13 @@ const MAPS = [
     id: 'livonia',
     name: 'Livonia',
     image: '/livonia.jpg',
-    topo: null,
+    topo: '/livonia-top.jpg',
   },
   {
     id: 'sakhal',
     name: 'Sakhal',
     image: '/sakhal.jpg',
-    topo: null,
+    topo: '/sakhal-top.jpg',
   },
 ]
 
