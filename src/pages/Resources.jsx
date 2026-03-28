@@ -56,31 +56,57 @@ export default function Resources({ session }) {
   async function runOcr(imageData) {
   setOcrLoading(true)
   setOcrResults([])
+
   try {
-    const Tesseract = await import('tesseract.js')
-const { data: { text } } = await Tesseract.recognize(imageData, 'eng', {
-  logger: () => {},
-  workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/worker.min.js',
-  langPath: 'https://tessdata.projectnaptha.com/4.0.0',
-  corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@4/tesseract-core.wasm.js',
-})
+    // Convert image to base64 if it's a file object
+    let base64Image = imageData
+    if (typeof imageData !== 'string' || !imageData.startsWith('data:')) {
+      base64Image = await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result)
+        reader.onerror = reject
+        reader.readAsDataURL(imageData)
+      })
+    }
+
+    const apiKey = import.meta.env.VITE_OCR_API_KEY || 'helloworld'
+
+    const formData = new FormData()
+    formData.append('base64Image', base64Image)
+    formData.append('language', 'eng')
+    formData.append('isOverlayRequired', 'false')
+    formData.append('detectOrientation', 'true')
+    formData.append('scale', 'true')
+    formData.append('OCREngine', '2')
+
+    const response = await fetch('https://api.ocr.space/parse/image', {
+      method: 'POST',
+      headers: { 'apikey': apiKey },
+      body: formData
+    })
+
+    const result = await response.json()
+
+    if (result.IsErroredOnProcessing) {
+      throw new Error(result.ErrorMessage || 'OCR failed')
+    }
+
+    const text = result.ParsedResults?.[0]?.ParsedText || ''
 
     const lines = text
       .split('\n')
       .map(l => l.trim())
-      .filter(l => l.length > 2 && l.length < 60)
+      .filter(l => l.length > 2 && l.length < 80)
 
     const seen = new Set()
     const items = []
 
     for (const line of lines) {
-      // Extract quantity
       const qtyMatch = line.match(/[xX×]\s*(\d+)|(\d+)\s*[xX×]|\((\d+)\)/i)
       const qty = qtyMatch
         ? parseInt(qtyMatch[1] || qtyMatch[2] || qtyMatch[3])
         : 1
 
-      // Clean the line for matching
       const cleaned = line
         .replace(/[xX×]\s*\d+|\d+\s*[xX×]|\(\d+\)/gi, '')
         .replace(/[^a-zA-Z0-9\s\-\.]/g, '')
@@ -105,6 +131,26 @@ const { data: { text } } = await Tesseract.recognize(imageData, 'eng', {
         selected: true
       })
     }
+
+    items.sort((a, b) => {
+      const order = { high: 0, medium: 1, low: 2, unknown: 3 }
+      return (order[a.confidence] || 3) - (order[b.confidence] || 3)
+    })
+
+    if (items.length === 0) {
+      alert('No DayZ items detected in this screenshot. Try a clearer image with item names visible.')
+    }
+
+    setOcrResults(items)
+    setSelectedOcr(items.map((_, i) => i))
+
+  } catch (err) {
+    console.error('OCR error:', err)
+    alert('OCR failed: ' + (err.message || 'Unknown error. Please try again.'))
+  }
+
+  setOcrLoading(false)
+}
 
     // Sort — high confidence first, mod items last
     items.sort((a, b) => {
