@@ -1,8 +1,6 @@
 [build]
-builder = "nixpacks"
-buildCommand = "echo 'skip'"
+buildCommand = "npm ci"
 
 [deploy]
-startCommand = "node bot.js"
+startCommand = "node index.js"
 restartPolicyType = "always"
-restartPolicyMaxRetries = 10
