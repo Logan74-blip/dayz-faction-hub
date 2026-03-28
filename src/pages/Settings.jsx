@@ -53,6 +53,8 @@ export default function Settings({ session }) {
   const [saved, setSaved] = useState(false)
   const [settingsSaved, setSettingsSaved] = useState(false)
   const [inviteLoading, setInviteLoading] = useState(false)
+const [showDeleteModal, setShowDeleteModal] = useState(false)
+const [deleteConfirmName, setDeleteConfirmName] = useState('')
   const [testingWebhook, setTestingWebhook] = useState(false)
   const userId = session.user.id
   const canEdit = role === 'leader' || role === 'co-leader'
@@ -215,7 +217,37 @@ export default function Settings({ session }) {
     await supabase.from('member_history').insert({ faction_id: faction.id, user_id: userIdToKick, action: 'left' })
     loadMembers()
   }
+async function leaveFaction() {
+  if (!window.confirm('Are you sure you want to leave this faction? You will lose access to all faction data.')) return
+  await supabase.from('faction_members').delete().eq('faction_id', faction.id).eq('user_id', userId)
+  await supabase.from('member_history').insert({ faction_id: faction.id, user_id: userId, action: 'left' })
+  window.location.href = '/'
+}
 
+async function deleteFaction() {
+  if (deleteConfirmName.trim().toLowerCase() !== faction.name.toLowerCase()) {
+    alert('Faction name does not match. Please type the exact faction name to confirm.')
+    return
+  }
+  // Notify all members before deleting
+  const { data: allMembers } = await supabase
+    .from('faction_members')
+    .select('user_id')
+    .eq('faction_id', faction.id)
+    .neq('user_id', userId)
+  if (allMembers?.length) {
+    await supabase.from('notifications').insert(allMembers.map(m => ({
+      faction_id: faction.id,
+      user_id: m.user_id,
+      type: 'general',
+      title: `💀 ${faction.name} has been disbanded`,
+      body: 'The faction leader has dissolved the faction. You are now factionless.'
+    })))
+  }
+  // Delete faction — cascade will handle all related data
+  await supabase.from('factions').delete().eq('id', faction.id)
+  window.location.href = '/'
+}
   async function changeRole(memberId, newRole) {
     await supabase.from('faction_members').update({ role: newRole }).eq('id', memberId)
     loadMembers()
@@ -365,6 +397,38 @@ export default function Settings({ session }) {
             </div>
           ))}
         </div>
+
+        {/* Leave Faction — all non-leader members */}
+        {role !== 'leader' && (
+          <div style={{ borderTop:'1px solid var(--border)', paddingTop:'14px' }}>
+            <button
+              className="btn btn-ghost"
+              style={{ color:'var(--red)', fontSize:'13px', display:'flex', alignItems:'center', gap:'6px' }}
+              onClick={leaveFaction}
+            >
+              🚪 Leave Faction
+            </button>
+            <p style={{ fontSize:'11px', color:'var(--muted)', marginTop:'6px' }}>
+              You will lose access to all faction data. You can join or create a new faction afterwards.
+            </p>
+          </div>
+        )}
+
+        {/* Delete Faction — leader only */}
+        {role === 'leader' && (
+          <div style={{ borderTop:'1px solid var(--border)', paddingTop:'14px', display:'flex', flexDirection:'column', gap:'8px' }}>
+            <p style={{ fontSize:'12px', color:'var(--muted)' }}>
+              As leader, you cannot leave the faction — you must either transfer leadership to another member or delete the faction entirely.
+            </p>
+            <button
+              className="btn btn-ghost"
+              style={{ color:'var(--red)', fontSize:'13px', alignSelf:'flex-start', display:'flex', alignItems:'center', gap:'6px', border:'1px solid var(--red)' }}
+              onClick={() => setShowDeleteModal(true)}
+            >
+              💀 Disband Faction
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Discord Notifications */}
@@ -422,6 +486,45 @@ export default function Settings({ session }) {
               </div>
             </div>
           )}
+        </div>
+      )}
+      {/* Delete Faction Modal */}
+      {showDeleteModal && (
+        <div style={{ position:'fixed', inset:0, background:'#00000088', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:'24px' }} onClick={() => setShowDeleteModal(false)}>
+          <div className="card" style={{ maxWidth:'420px', width:'100%', display:'flex', flexDirection:'column', gap:'16px', borderColor:'var(--red)' }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontWeight:700, fontSize:'18px', color:'var(--red)' }}>💀 Disband Faction</h3>
+            <p style={{ color:'var(--muted)', fontSize:'14px', lineHeight:1.6 }}>
+              This will <strong style={{ color:'var(--red)' }}>permanently delete</strong> your faction and kick all {members.length} members. All raids, resources, bounties, announcements and war logs will be destroyed forever.
+            </p>
+            <p style={{ color:'var(--muted)', fontSize:'14px' }}>
+              All members will receive a notification that the faction has been disbanded and will become factionless.
+            </p>
+            <div>
+              <label style={{ fontSize:'12px', color:'var(--muted)', display:'block', marginBottom:'6px' }}>
+                TYPE YOUR FACTION NAME TO CONFIRM: <strong style={{ color:'var(--text)' }}>{faction.name}</strong>
+              </label>
+              <input
+                placeholder={faction.name}
+                value={deleteConfirmName}
+                onChange={e => setDeleteConfirmName(e.target.value)}
+                style={{ borderColor: deleteConfirmName && deleteConfirmName.toLowerCase() !== faction.name.toLowerCase() ? 'var(--red)' : 'var(--border)' }}
+                autoFocus
+              />
+            </div>
+            <div style={{ display:'flex', gap:'8px' }}>
+              <button
+                className="btn"
+                style={{ flex:1, background: deleteConfirmName.toLowerCase() === faction.name.toLowerCase() ? '#b91c1c' : '#374151', color:'#fff', border:'none', fontWeight:700, cursor: deleteConfirmName.toLowerCase() === faction.name.toLowerCase() ? 'pointer' : 'not-allowed' }}
+                onClick={deleteFaction}
+                disabled={deleteConfirmName.toLowerCase() !== faction.name.toLowerCase()}
+              >
+                Permanently Disband
+              </button>
+              <button className="btn btn-ghost" style={{ flex:1 }} onClick={() => { setShowDeleteModal(false); setDeleteConfirmName('') }}>
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
