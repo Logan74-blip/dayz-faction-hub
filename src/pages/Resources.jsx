@@ -150,16 +150,6 @@ export default function Resources({ session }) {
         alert('No DayZ items detected. Try a clearer screenshot with item names visible.')
       }
 
-      setOcrResults(detected)
-      setSelectedOcr(detected.map((_, i) => i))
-
-    } catch (err) {
-      console.error('OCR error:', err)
-      alert('OCR failed: ' + (err.message || 'Please try again with a clearer image.'))
-    }
-
-    setOcrLoading(false)
-  }
 
   function toggleOcrSelect(i) {
     setSelectedOcr(s => s.includes(i) ? s.filter(x => x !== i) : [...s, i])
