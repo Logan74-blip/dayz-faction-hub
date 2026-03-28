@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../supabaseClient'
 import { Plus, Trash2, Camera, X, Check } from 'lucide-react'
+import { matchItem } from '../dayzItems.js'
 
 const CATEGORIES = ['Weapons', 'Ammo', 'Medical', 'Food & Water', 'Vehicles', 'Base Materials', 'Other']
 
@@ -57,7 +58,6 @@ export default function Resources({ session }) {
   setOcrResults([])
   try {
     const Tesseract = await import('tesseract.js')
-    const { matchItem } = await import('../dayzItems.js')
 
     const { data: { text } } = await Tesseract.recognize(imageData, 'eng', {
       logger: () => {},
