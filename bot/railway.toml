@@ -2,5 +2,5 @@
 buildCommand = "npm ci"
 
 [deploy]
-startCommand = "node index.js"
+startCommand = "node bot.js"
 restartPolicyType = "always"
