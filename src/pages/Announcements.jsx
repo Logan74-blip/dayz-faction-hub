@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { useRole } from '../hooks/useRole'
 import { Plus, Pin, Trash2 } from 'lucide-react'
+import { sendWebhookNotification } from './Settings'
 
 export default function Announcements({ session }) {
   const { role, faction } = useRole(session.user.id)
@@ -12,9 +13,7 @@ export default function Announcements({ session }) {
   const userId = session.user.id
   const canPost = role === 'leader' || role === 'co-leader'
 
-  useEffect(() => {
-    if (faction?.id) load()
-  }, [faction?.id])
+  useEffect(() => { if (faction?.id) load() }, [faction?.id])
 
   async function load() {
     setLoading(true)
@@ -37,24 +36,45 @@ export default function Announcements({ session }) {
       body: form.body,
       pinned: form.pinned
     }).select('*, profile:profiles!announcements_created_by_fkey(discord_username, discord_avatar)').single()
-
     if (!error) {
-      setAnnouncements(a => form.pinned ? [data, ...a] : [...a.filter(x => x.pinned), data, ...a.filter(x => !x.pinned)])
+      setAnnouncements(a => form.pinned
+        ? [data, ...a]
+        : [...a.filter(x => x.pinned), data, ...a.filter(x => !x.pinned)]
+      )
       setForm({ title:'', body:'', pinned:false })
       setShowForm(false)
+
+      // Log to event feed
       await supabase.from('events').insert({
         faction_id: faction.id, created_by: userId,
-        type: 'custom', title: `📣 Announcement: ${form.title}`,
+        type: 'announcement',
+        title: `📣 Announcement: ${form.title}`,
         description: form.body.slice(0, 100)
       })
-      const { data: members } = await supabase.from('faction_members').select('user_id').eq('faction_id', faction.id).neq('user_id', userId)
+
+      // Notify all faction members
+      const { data: members } = await supabase
+        .from('faction_members')
+        .select('user_id')
+        .eq('faction_id', faction.id)
+        .neq('user_id', userId)
       if (members?.length) {
         await supabase.from('notifications').insert(members.map(m => ({
           faction_id: faction.id, user_id: m.user_id,
-          type: 'announcement', title: `📣 ${form.title}`,
+          type: 'announcement',
+          title: `📣 ${form.title}`,
           body: form.body.slice(0, 80)
         })))
       }
+
+      // Send Discord webhook notification
+      await sendWebhookNotification(
+        faction.id,
+        'announcement',
+        `📣 ${form.pinned ? '📌 PINNED — ' : ''}${form.title}`,
+        [{ name: 'Message', value: form.body.slice(0, 1024) }],
+        0x4ade80
+      )
     }
   }
 
@@ -65,9 +85,17 @@ export default function Announcements({ session }) {
 
   async function togglePin(id, pinned) {
     await supabase.from('announcements').update({ pinned: !pinned }).eq('id', id)
-    setAnnouncements(a => a.map(x => x.id === id ? {...x, pinned: !pinned} : x)
-      .sort((a, b) => b.pinned - a.pinned || new Date(b.created_at) - new Date(a.created_at)))
+    setAnnouncements(a =>
+      a.map(x => x.id === id ? {...x, pinned: !pinned} : x)
+       .sort((a, b) => b.pinned - a.pinned || new Date(b.created_at) - new Date(a.created_at))
+    )
   }
+
+  if (!faction) return (
+    <div style={{ padding:'80px', textAlign:'center', color:'var(--muted)' }}>
+      Join or create a faction to view announcements.
+    </div>
+  )
 
   if (loading) return (
     <div style={{ padding:'80px', textAlign:'center', color:'var(--muted)', fontFamily:'Share Tech Mono' }}>
@@ -89,10 +117,16 @@ export default function Announcements({ session }) {
         )}
       </div>
 
+      {!canPost && (
+        <div className="card" style={{ background:'#1a1a0d', borderColor:'var(--yellow)', fontSize:'13px', color:'var(--muted)' }}>
+          🔒 Only <strong style={{ color:'var(--yellow)' }}>Leaders</strong> and <strong style={{ color:'var(--yellow)' }}>Co-Leaders</strong> can post announcements.
+        </div>
+      )}
+
       {showForm && canPost && (
         <div className="card" style={{ display:'flex', flexDirection:'column', gap:'12px', borderColor:'var(--green-dim)' }}>
           <h3 style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'14px' }}>NEW ANNOUNCEMENT</h3>
-          <input placeholder="Title..." value={form.title} onChange={e => setForm(f => ({...f, title:e.target.value}))} />
+          <input placeholder="Title..." value={form.title} onChange={e => setForm(f => ({...f, title:e.target.value}))} autoFocus />
           <textarea placeholder="Message body..." value={form.body} onChange={e => setForm(f => ({...f, body:e.target.value}))} rows={4} />
           <label style={{ display:'flex', alignItems:'center', gap:'8px', fontSize:'14px', cursor:'pointer' }}>
             <input type="checkbox" checked={form.pinned} onChange={e => setForm(f => ({...f, pinned:e.target.checked}))} style={{ width:'auto', accentColor:'var(--green)' }} />
@@ -105,7 +139,7 @@ export default function Announcements({ session }) {
         </div>
       )}
 
-      {announcements.length === 0 && !loading && (
+      {announcements.length === 0 && (
         <div className="card" style={{ textAlign:'center', color:'var(--muted)', padding:'48px' }}>
           No announcements yet. {canPost ? 'Click "Post Announcement" to create one.' : 'Leadership will post updates here.'}
         </div>
