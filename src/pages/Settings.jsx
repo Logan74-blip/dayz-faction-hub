@@ -82,28 +82,20 @@ export default function Settings({ session }) {
   async function saveFaction() {
   if (!faction || !canEdit) return
   const serverToSave = serverInput.trim()
-  const { data, error } = await supabase.from('factions').update({
+  const { error } = await supabase.from('factions').update({
     name: form.name,
     tag: form.tag,
     description: form.description,
     server_name: serverToSave || null,
     is_recruiting: form.is_recruiting
-  }).eq('id', faction.id).select().single()
-  if (!error && data) {
+  }).eq('id', faction.id)
+  if (!error) {
     setSaved(true)
-    // Update form with returned data to confirm save
-    setForm({
-      name: data.name || '',
-      tag: data.tag || '',
-      description: data.description || '',
-      is_recruiting: data.is_recruiting ?? true
-    })
-    setServerInput(data.server_name || '')
     setShowCustomInput(false)
     loadExistingServers()
     setTimeout(() => setSaved(false), 2000)
   } else {
-    alert('Failed to save: ' + (error?.message || 'Unknown error'))
+    alert('Failed to save: ' + error.message)
   }
 }
 
