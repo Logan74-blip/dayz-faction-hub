@@ -1,39 +1,34 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { Plus, Trash2, Calendar, MapPin, Users } from 'lucide-react'
 import { useRole } from '../hooks/useRole'
+import { Plus, Trash2, MapPin, Calendar, Users } from 'lucide-react'
 
 export default function Raids({ session }) {
-    const [templates, setTemplates] = useState([])
-const [showTemplates, setShowTemplates] = useState(false)
-  const [faction, setFaction] = useState(null)
+  const { role, faction } = useRole(session.user.id)
   const [raids, setRaids] = useState([])
   const [rsvps, setRsvps] = useState({})
+  const [templates, setTemplates] = useState([])
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ title:'', target_location:'', scheduled_at:'', description:'' })
-  const { perms } = useRole(session.user.id)
   const userId = session.user.id
+  const canManage = role === 'leader' || role === 'co-leader'
 
-  useEffect(() => { loadFaction() }, [])
-  async function loadTemplates(fid) {
-  const { data } = await supabase.from('raid_templates').select('*').eq('faction_id', fid)
-  setTemplates(data || [])
-  if (data?.factions) { 
-  setFaction(data.factions)
-  loadRaids(data.factions.id)
-  loadTemplates(data.factions.id)
-}
-}
-
-  async function loadFaction() {
-    const { data } = await supabase.from('faction_members').select('*, factions(*)').eq('user_id', userId).maybeSingle()
-    if (data?.factions) { setFaction(data.factions); loadRaids(data.factions.id) }
-  }
+  useEffect(() => {
+    if (faction?.id) {
+      loadRaids(faction.id)
+      loadTemplates(faction.id)
+    }
+  }, [faction?.id])
 
   async function loadRaids(fid) {
     const { data } = await supabase.from('raids').select('*').eq('faction_id', fid).order('scheduled_at')
     setRaids(data || [])
     if (data?.length) loadRsvps(data.map(r => r.id))
+  }
+
+  async function loadTemplates(fid) {
+    const { data } = await supabase.from('raid_templates').select('*').eq('faction_id', fid)
+    setTemplates(data || [])
   }
 
   async function loadRsvps(raidIds) {
@@ -47,43 +42,45 @@ const [showTemplates, setShowTemplates] = useState(false)
   }
 
   async function createRaid() {
-  if (!form.title.trim() || !form.scheduled_at) return
-  const { data, error } = await supabase.from('raids').insert({
-    faction_id: faction.id,
-    created_by: userId,
-    title: form.title,
-    target_location: form.target_location,
-    scheduled_at: form.scheduled_at,
-    description: form.description,
-    status: 'planned'
-  }).select().single()
-
-  if (!error) {
-    setRaids(r => [...r, data].sort((a,b) => new Date(a.scheduled_at) - new Date(b.scheduled_at)))
-    setForm({ title:'', target_location:'', scheduled_at:'', description:'' })
-    setShowForm(false)
-    notifyDiscord(faction.id, data)
-    // Auto-log to event feed
-    await supabase.from('events').insert({
+    if (!form.title.trim() || !form.scheduled_at || !faction) return
+    const { data, error } = await supabase.from('raids').insert({
       faction_id: faction.id,
       created_by: userId,
-      type: 'raid',
-      title: `Raid Scheduled: ${data.title}`,
-      description: `Target: ${data.target_location || 'TBD'} — ${new Date(data.scheduled_at).toLocaleString()}`
-    })
-    // Notify all faction members
-    const { data: members } = await supabase.from('faction_members').select('user_id').eq('faction_id', faction.id).neq('user_id', userId)
-    if (members?.length) {
-      await supabase.from('notifications').insert(members.map(m => ({
-        faction_id: faction.id,
-        user_id: m.user_id,
-        type: 'raid',
-        title: `⚔️ Raid Scheduled: ${data.title}`,
-        body: `Target: ${data.target_location || 'TBD'} at ${new Date(data.scheduled_at).toLocaleString()}`
-      })))
+      title: form.title,
+      target_location: form.target_location,
+      scheduled_at: form.scheduled_at,
+      description: form.description,
+      status: 'planned'
+    }).select().single()
+    if (!error) {
+      setRaids(r => [...r, data].sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at)))
+      setForm({ title:'', target_location:'', scheduled_at:'', description:'' })
+      setShowForm(false)
+      notifyDiscord(faction.id, data)
+      await supabase.from('events').insert({
+        faction_id: faction.id, created_by: userId, type: 'raid',
+        title: `Raid Scheduled: ${data.title}`,
+        description: `Target: ${data.target_location || 'TBD'} — ${new Date(data.scheduled_at).toLocaleString()}`
+      })
+      const { data: members } = await supabase.from('faction_members').select('user_id').eq('faction_id', faction.id).neq('user_id', userId)
+      if (members?.length) {
+        await supabase.from('notifications').insert(members.map(m => ({
+          faction_id: faction.id, user_id: m.user_id, type: 'raid',
+          title: `⚔️ Raid Scheduled: ${data.title}`,
+          body: `Target: ${data.target_location || 'TBD'} at ${new Date(data.scheduled_at).toLocaleString()}`
+        })))
+      }
     }
   }
-}
+
+  async function saveTemplate() {
+    if (!faction || !form.title) return
+    const { data } = await supabase.from('raid_templates').insert({
+      faction_id: faction.id, created_by: userId,
+      title: form.title, target_location: form.target_location, description: form.description
+    }).select().single()
+    if (data) { setTemplates(t => [...t, data]); alert('Template saved!') }
+  }
 
   async function deleteRaid(id) {
     await supabase.from('raids').delete().eq('id', id)
@@ -117,6 +114,12 @@ const [showTemplates, setShowTemplates] = useState(false)
   const upcoming = raids.filter(r => new Date(r.scheduled_at) >= new Date())
   const past = raids.filter(r => new Date(r.scheduled_at) < new Date())
 
+  if (!faction) return (
+    <div style={{ padding:'80px', textAlign:'center', color:'var(--muted)' }}>
+      Join or create a faction to access the Raid Planner.
+    </div>
+  )
+
   return (
     <div style={{ maxWidth:900, margin:'40px auto', padding:'0 24px', display:'flex', flexDirection:'column', gap:'24px' }}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
@@ -124,58 +127,56 @@ const [showTemplates, setShowTemplates] = useState(false)
           <h1 style={{ fontFamily:'Share Tech Mono', fontSize:'24px', color:'var(--green)' }}>RAID PLANNER</h1>
           <p style={{ color:'var(--muted)', marginTop:'4px' }}>Schedule operations and track attendance</p>
         </div>
-        {faction && perms?.raids && (
+        {canManage && (
           <button className="btn btn-green" style={{ display:'flex', alignItems:'center', gap:'8px' }} onClick={() => setShowForm(f => !f)}>
             <Plus size={15} /> Schedule Raid
           </button>
         )}
       </div>
 
-      {showForm && (
+      {!canManage && (
+        <div className="card" style={{ background:'#1a1a0d', borderColor:'var(--yellow)', fontSize:'13px', color:'var(--muted)' }}>
+          🔒 Only <strong style={{ color:'var(--yellow)' }}>Leaders</strong> and <strong style={{ color:'var(--yellow)' }}>Co-Leaders</strong> can schedule raids. You can RSVP to upcoming operations below.
+        </div>
+      )}
+
+      {showForm && canManage && (
         <div className="card" style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
           <h3 style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'15px' }}>NEW OPERATION</h3>
+          {templates.length > 0 && (
+            <div>
+              <p style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'6px' }}>LOAD TEMPLATE</p>
+              <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+                {templates.map(t => (
+                  <button key={t.id} onClick={() => setForm(f => ({...f, title:t.title, target_location:t.target_location||'', description:t.description||''}))}
+                    className="btn btn-ghost" style={{ fontSize:'12px', padding:'4px 10px' }}>
+                    {t.title}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
             <input placeholder="Operation name" value={form.title} onChange={e => setForm(f => ({...f, title:e.target.value}))} />
             <input placeholder="Target location" value={form.target_location} onChange={e => setForm(f => ({...f, target_location:e.target.value}))} />
           </div>
           <input type="datetime-local" value={form.scheduled_at} onChange={e => setForm(f => ({...f, scheduled_at:e.target.value}))} />
           <textarea placeholder="Briefing..." value={form.description} onChange={e => setForm(f => ({...f, description:e.target.value}))} rows={2} />
-            <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
-  <button className="btn btn-green" onClick={createRaid}>Create Operation</button>
-  <button className="btn btn-ghost" onClick={() => setShowForm(false)}>Cancel</button>
-  {form.title && (
-    <button className="btn btn-ghost" style={{ fontSize:'12px' }} onClick={async () => {
-      if (!faction || !form.title) return
-      const { data } = await supabase.from('raid_templates').insert({
-        faction_id: faction.id, created_by: userId,
-        title: form.title, target_location: form.target_location, description: form.description
-      }).select().single()
-      if (data) setTemplates(t => [...t, data])
-      alert('Template saved!')
-    }}>💾 Save as Template</button>
-  )}
-</div>
-          <div style={{ display:'flex', gap:'8px' }}>
+          <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
             <button className="btn btn-green" onClick={createRaid}>Create Operation</button>
             <button className="btn btn-ghost" onClick={() => setShowForm(false)}>Cancel</button>
-            {templates.length > 0 && (
-  <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', marginBottom:'8px' }}>
-    <span style={{ fontSize:'12px', color:'var(--muted)', alignSelf:'center' }}>Templates:</span>
-    {templates.map(t => (
-      <button key={t.id} onClick={() => setForm(f => ({...f, title:t.title, target_location:t.target_location||'', description:t.description||''}))}
-        className="btn btn-ghost" style={{ fontSize:'12px', padding:'4px 10px' }}>
-        {t.title}
-      </button>
-    ))}
-  </div>
-)}
+            {form.title && (
+              <button className="btn btn-ghost" style={{ fontSize:'12px' }} onClick={saveTemplate}>
+                💾 Save as Template
+              </button>
+            )}
           </div>
         </div>
       )}
 
       {upcoming.length === 0 && past.length === 0 && (
         <div className="card" style={{ textAlign:'center', color:'var(--muted)', padding:'48px' }}>
-          No raids scheduled yet. Click "Schedule Raid" to plan your first operation.
+          No raids scheduled yet.{canManage ? ' Click "Schedule Raid" to plan your first operation.' : ' Check back when your leaders schedule an operation.'}
         </div>
       )}
 
@@ -187,7 +188,7 @@ const [showTemplates, setShowTemplates] = useState(false)
             const goingCount = rsvps[raid.id]?.length || 0
             return (
               <div key={raid.id} className="card" style={{ borderLeft:'3px solid var(--red)', display:'flex', flexDirection:'column', gap:'10px' }}>
-                <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between' }}>
+                <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', flexWrap:'wrap', gap:'10px' }}>
                   <div>
                     <h3 style={{ fontSize:'18px', fontWeight:700 }}>{raid.title}</h3>
                     <div style={{ display:'flex', gap:'16px', marginTop:'6px', flexWrap:'wrap' }}>
@@ -201,7 +202,7 @@ const [showTemplates, setShowTemplates] = useState(false)
                     <button onClick={() => toggleRsvp(raid.id)} className={`btn ${myRsvp ? 'btn-ghost' : 'btn-green'}`} style={{ fontSize:'13px', padding:'6px 14px' }}>
                       {myRsvp ? '✓ Going' : 'RSVP'}
                     </button>
-                    {raid.created_by === userId && (
+                    {canManage && (
                       <button onClick={() => deleteRaid(raid.id)} className="btn btn-ghost" style={{ padding:'6px' }}>
                         <Trash2 size={14} color="var(--red)" />
                       </button>
@@ -218,7 +219,7 @@ const [showTemplates, setShowTemplates] = useState(false)
         <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
           <h3 style={{ fontFamily:'Share Tech Mono', color:'var(--muted)', fontSize:'14px', letterSpacing:'0.1em' }}>PAST OPERATIONS</h3>
           {past.map(raid => (
-            <PastRaid key={raid.id} raid={raid} userId={userId} faction={faction} perms={perms} setRaids={setRaids} />
+            <PastRaid key={raid.id} raid={raid} userId={userId} faction={faction} canManage={canManage} setRaids={setRaids} />
           ))}
         </div>
       )}
@@ -226,7 +227,7 @@ const [showTemplates, setShowTemplates] = useState(false)
   )
 }
 
-function PastRaid({ raid, userId, faction, perms, setRaids }) {
+function PastRaid({ raid, userId, faction, canManage, setRaids }) {
   const [open, setOpen] = useState(false)
   const [debrief, setDebrief] = useState({
     outcome: raid.outcome || '',
@@ -251,16 +252,16 @@ function PastRaid({ raid, userId, faction, perms, setRaids }) {
 
   return (
     <div className="card" style={{ borderLeft:'3px solid var(--border)', display:'flex', flexDirection:'column', gap:'10px' }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'8px' }}>
         <div>
           <span style={{ fontWeight:700 }}>{raid.title}</span>
           {raid.target_location && <span style={{ color:'var(--muted)', fontSize:'13px', marginLeft:'10px' }}>{raid.target_location}</span>}
           <div style={{ fontSize:'12px', color:'var(--muted)', marginTop:'2px' }}>{new Date(raid.scheduled_at).toLocaleString()}</div>
         </div>
         <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
-          {raid.outcome && <span style={{ fontSize:'13px', color: raid.outcome==='success' ? 'var(--green)' : 'var(--red)' }}>{raid.outcome==='success' ? '✅ Success' : '❌ Failed'}</span>}
-          {raid.rating > 0 && <span style={{ color:'var(--yellow)' }}>{'⭐'.repeat(raid.rating)}</span>}
-          {perms?.raids && (
+          {raid.outcome && <span style={{ fontSize:'13px', color: raid.outcome==='success' ? 'var(--green)' : 'var(--red)' }}>{raid.outcome==='success' ? '✅ Success' : raid.outcome==='partial' ? '⚠️ Partial' : raid.outcome==='aborted' ? '🚫 Aborted' : '❌ Failed'}</span>}
+          {raid.rating > 0 && <span style={{ color:'var(--yellow)' }}>{'★'.repeat(raid.rating)}</span>}
+          {canManage && (
             <button onClick={() => setOpen(o => !o)} className="btn btn-ghost" style={{ fontSize:'12px', padding:'4px 10px' }}>
               {raid.outcome ? 'Edit Debrief' : '📋 Debrief'}
             </button>
@@ -268,7 +269,7 @@ function PastRaid({ raid, userId, faction, perms, setRaids }) {
         </div>
       </div>
 
-      {open && (
+      {open && canManage && (
         <div style={{ background:'#0d1a0d', border:'1px solid var(--green-dim)', borderRadius:'6px', padding:'14px', display:'flex', flexDirection:'column', gap:'10px' }}>
           <h4 style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'13px' }}>OPERATION DEBRIEF</h4>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
@@ -287,14 +288,14 @@ function PastRaid({ raid, userId, faction, perms, setRaids }) {
               <input type="number" min={0} value={debrief.casualties} onChange={e => setDebrief(d => ({...d, casualties:parseInt(e.target.value)||0}))} />
             </div>
           </div>
-          <input placeholder="Loot summary (e.g. 3x AK-74, medical kits...)" value={debrief.loot_summary} onChange={e => setDebrief(d => ({...d, loot_summary:e.target.value}))} />
+          <input placeholder="Loot summary (e.g. 3x KA-74, medical kits...)" value={debrief.loot_summary} onChange={e => setDebrief(d => ({...d, loot_summary:e.target.value}))} />
           <textarea placeholder="Notes — what went well, what to improve..." value={debrief.debrief_notes} onChange={e => setDebrief(d => ({...d, debrief_notes:e.target.value}))} rows={2} />
           <div>
             <label style={{ fontSize:'12px', color:'var(--muted)', display:'block', marginBottom:'6px' }}>RATING</label>
             <div style={{ display:'flex', gap:'4px' }}>
               {[1,2,3,4,5].map(n => (
                 <button key={n} onClick={() => setDebrief(d => ({...d, rating:n}))} style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:'22px' }}>
-                  {n <= debrief.rating ? '⭐' : '☆'}
+                  {n <= debrief.rating ? '★' : '☆'}
                 </button>
               ))}
             </div>
