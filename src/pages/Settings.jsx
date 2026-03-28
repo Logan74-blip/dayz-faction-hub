@@ -13,7 +13,7 @@ const OFFICIAL_SERVERS = [
 ]
 
 export default function Settings({ session }) {
-  const { role, faction } = useRole(session.user.id)
+  const { role, faction, reload } = useRole(session.user.id)
   const [form, setForm] = useState({ name:'', tag:'', description:'', is_recruiting:true })
   const [serverInput, setServerInput] = useState('')
   const [showCustomInput, setShowCustomInput] = useState(false)
@@ -92,6 +92,7 @@ export default function Settings({ session }) {
   if (!error) {
     setSaved(true)
     setShowCustomInput(false)
+    await reload()
     loadExistingServers()
     setTimeout(() => setSaved(false), 2000)
   } else {
