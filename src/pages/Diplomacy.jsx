@@ -1,311 +1,162 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { useRole } from '../hooks/useRole'
-import { Plus, Trash2, MapPin, Calendar, Users } from 'lucide-react'
+import { Shield, Swords, Package } from 'lucide-react'
 
-export default function Raids({ session }) {
+const TYPES = [
+  { value:'nap', label:'Non-Aggression Pact', icon:Shield, color:'var(--green)' },
+  { value:'war', label:'War Declaration', icon:Swords, color:'var(--red)' },
+  { value:'trade', label:'Trade Offer', icon:Package, color:'var(--yellow)' },
+]
+
+export default function Diplomacy({ session }) {
   const { role, faction } = useRole(session.user.id)
-  const [raids, setRaids] = useState([])
-  const [rsvps, setRsvps] = useState({})
-  const [templates, setTemplates] = useState([])
-  const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ title:'', target_location:'', scheduled_at:'', description:'' })
+  const [allFactions, setAllFactions] = useState([])
+  const [records, setRecords] = useState([])
+  const [form, setForm] = useState({ target:'', type:'nap', terms:'' })
   const userId = session.user.id
   const canManage = role === 'leader' || role === 'co-leader'
 
-  useEffect(() => {
-    if (faction?.id) {
-      loadRaids(faction.id)
-      loadTemplates(faction.id)
-    }
-  }, [faction?.id])
+  useEffect(() => { if (faction?.id) loadData() }, [faction?.id])
 
-  async function loadRaids(fid) {
-    const { data } = await supabase.from('raids').select('*').eq('faction_id', fid).order('scheduled_at')
-    setRaids(data || [])
-    if (data?.length) loadRsvps(data.map(r => r.id))
+  async function loadData() {
+    const { data: facs } = await supabase
+      .from('factions')
+      .select('id, name, tag')
+      .neq('id', faction.id)
+      .order('name')
+    setAllFactions(facs || [])
+
+    const { data: recs } = await supabase
+      .from('diplomacy')
+      .select(`
+        *,
+        faction_a_info:factions!diplomacy_faction_a_fkey(id, name, tag),
+        faction_b_info:factions!diplomacy_faction_b_fkey(id, name, tag)
+      `)
+      .or(`faction_a.eq.${faction.id},faction_b.eq.${faction.id}`)
+      .order('created_at', { ascending: false })
+    setRecords(recs || [])
   }
 
-  async function loadTemplates(fid) {
-    const { data } = await supabase.from('raid_templates').select('*').eq('faction_id', fid)
-    setTemplates(data || [])
-  }
-
-  async function loadRsvps(raidIds) {
-    const { data } = await supabase.from('raid_rsvps').select('*').in('raid_id', raidIds)
-    const map = {}
-    data?.forEach(r => {
-      if (!map[r.raid_id]) map[r.raid_id] = []
-      map[r.raid_id].push(r)
-    })
-    setRsvps(map)
-  }
-
-  async function createRaid() {
-    if (!form.title.trim() || !form.scheduled_at || !faction) return
-    const { data, error } = await supabase.from('raids').insert({
-      faction_id: faction.id,
-      created_by: userId,
-      title: form.title,
-      target_location: form.target_location,
-      scheduled_at: form.scheduled_at,
-      description: form.description,
-      status: 'planned'
+  async function submitDiplomacy() {
+    if (!form.target || !faction || !canManage) return
+    const { data, error } = await supabase.from('diplomacy').insert({
+      faction_a: faction.id,
+      faction_b: form.target,
+      type: form.type,
+      terms: form.terms,
+      status: 'pending',
+      created_by: userId
     }).select().single()
     if (!error) {
-      setRaids(r => [...r, data].sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at)))
-      setForm({ title:'', target_location:'', scheduled_at:'', description:'' })
-      setShowForm(false)
-      notifyDiscord(faction.id, data)
+      setForm({ target:'', type:'nap', terms:'' })
+      loadData()
+      const targetFaction = allFactions.find(f => f.id === form.target)
+      const typeLabel = form.type === 'nap' ? 'Non-Aggression Pact' : form.type === 'war' ? 'War Declaration' : 'Trade Offer'
       await supabase.from('events').insert({
-        faction_id: faction.id, created_by: userId, type: 'raid',
-        title: `Raid Scheduled: ${data.title}`,
-        description: `Target: ${data.target_location || 'TBD'} — ${new Date(data.scheduled_at).toLocaleString()}`
+        faction_id: faction.id, created_by: userId, type: 'diplomacy',
+        title: `${typeLabel} sent to ${targetFaction?.name}`,
+        description: form.terms || 'No terms specified'
       })
-      const { data: members } = await supabase.from('faction_members').select('user_id').eq('faction_id', faction.id).neq('user_id', userId)
-      if (members?.length) {
-        await supabase.from('notifications').insert(members.map(m => ({
-          faction_id: faction.id, user_id: m.user_id, type: 'raid',
-          title: `⚔️ Raid Scheduled: ${data.title}`,
-          body: `Target: ${data.target_location || 'TBD'} at ${new Date(data.scheduled_at).toLocaleString()}`
+      const { data: leaders } = await supabase.from('faction_members').select('user_id').eq('faction_id', form.target).in('role', ['leader', 'co-leader'])
+      if (leaders?.length) {
+        await supabase.from('notifications').insert(leaders.map(l => ({
+          faction_id: form.target, user_id: l.user_id,
+          type: form.type === 'war' ? 'war' : 'diplomacy',
+          title: `${form.type === 'war' ? '💀 War Declared' : form.type === 'nap' ? '🤝 NAP Proposed' : '🛒 Trade Offer'} by ${faction.name}`,
+          body: form.terms || 'No terms specified'
         })))
       }
     }
   }
 
-  async function saveTemplate() {
-    if (!faction || !form.title) return
-    const { data } = await supabase.from('raid_templates').insert({
-      faction_id: faction.id, created_by: userId,
-      title: form.title, target_location: form.target_location, description: form.description
-    }).select().single()
-    if (data) { setTemplates(t => [...t, data]); alert('Template saved!') }
+  async function updateStatus(id, status) {
+    if (!canManage) return
+    await supabase.from('diplomacy').update({ status }).eq('id', id)
+    loadData()
   }
 
-  async function deleteRaid(id) {
-    await supabase.from('raids').delete().eq('id', id)
-    setRaids(r => r.filter(x => x.id !== id))
-  }
-
-  async function toggleRsvp(raidId) {
-    const existing = rsvps[raidId]?.find(r => r.user_id === userId)
-    if (existing) {
-      await supabase.from('raid_rsvps').delete().eq('id', existing.id)
-      setRsvps(r => ({ ...r, [raidId]: r[raidId].filter(x => x.user_id !== userId) }))
-    } else {
-      const { data } = await supabase.from('raid_rsvps').insert({ raid_id: raidId, user_id: userId, status: 'going' }).select().single()
-      setRsvps(r => ({ ...r, [raidId]: [...(r[raidId] || []), data] }))
-    }
-  }
-
-  async function notifyDiscord(factionId, raid) {
-    const { data: settings } = await supabase.from('notification_settings').select('webhook_url, notify_raids').eq('faction_id', factionId).maybeSingle()
-    if (!settings?.webhook_url || !settings?.notify_raids) return
-    await fetch(settings.webhook_url, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ embeds: [{ title: '⚔️ Raid Scheduled', fields: [
-        { name: 'Operation', value: raid.title, inline: true },
-        { name: 'Target', value: raid.target_location || 'TBD', inline: true },
-        { name: 'Time', value: new Date(raid.scheduled_at).toLocaleString(), inline: false },
-      ], color: 0xf87171, timestamp: new Date().toISOString() }] })
-    }).catch(() => {})
-  }
-
-  const upcoming = raids.filter(r => new Date(r.scheduled_at) >= new Date())
-  const past = raids.filter(r => new Date(r.scheduled_at) < new Date())
+  function getTypeMeta(type) { return TYPES.find(t => t.value === type) || TYPES[0] }
+  const statusTag = { pending:'tag-yellow', active:'tag-green', rejected:'tag-red', expired:'tag-red' }
 
   if (!faction) return (
     <div style={{ padding:'80px', textAlign:'center', color:'var(--muted)' }}>
-      Join or create a faction to access the Raid Planner.
+      Join or create a faction to access Diplomacy.
     </div>
   )
 
   return (
     <div style={{ maxWidth:900, margin:'40px auto', padding:'0 24px', display:'flex', flexDirection:'column', gap:'24px' }}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-        <div>
-          <h1 style={{ fontFamily:'Share Tech Mono', fontSize:'24px', color:'var(--green)' }}>RAID PLANNER</h1>
-          <p style={{ color:'var(--muted)', marginTop:'4px' }}>Schedule operations and track attendance</p>
-        </div>
-        {canManage && (
-          <button className="btn btn-green" style={{ display:'flex', alignItems:'center', gap:'8px' }} onClick={() => setShowForm(f => !f)}>
-            <Plus size={15} /> Schedule Raid
-          </button>
-        )}
+      <div>
+        <h1 style={{ fontFamily:'Share Tech Mono', fontSize:'24px', color:'var(--green)' }}>DIPLOMACY BOARD</h1>
+        <p style={{ color:'var(--muted)', marginTop:'4px' }}>Negotiate pacts, declare war, or offer trades with other factions</p>
       </div>
 
       {!canManage && (
         <div className="card" style={{ background:'#1a1a0d', borderColor:'var(--yellow)', fontSize:'13px', color:'var(--muted)' }}>
-          🔒 Only <strong style={{ color:'var(--yellow)' }}>Leaders</strong> and <strong style={{ color:'var(--yellow)' }}>Co-Leaders</strong> can schedule raids. You can RSVP to upcoming operations below.
+          🔒 Only <strong style={{ color:'var(--yellow)' }}>Leaders</strong> and <strong style={{ color:'var(--yellow)' }}>Co-Leaders</strong> can send diplomacy proposals or accept/reject them.
         </div>
       )}
 
-      {showForm && canManage && (
-        <div className="card" style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
-          <h3 style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'15px' }}>NEW OPERATION</h3>
-          {templates.length > 0 && (
-            <div>
-              <p style={{ fontSize:'12px', color:'var(--muted)', marginBottom:'6px' }}>LOAD TEMPLATE</p>
-              <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
-                {templates.map(t => (
-                  <button key={t.id} onClick={() => setForm(f => ({...f, title:t.title, target_location:t.target_location||'', description:t.description||''}))}
-                    className="btn btn-ghost" style={{ fontSize:'12px', padding:'4px 10px' }}>
-                    {t.title}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+      {canManage && allFactions.length > 0 && (
+        <div className="card" style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
+          <h3 style={{ fontWeight:700, fontSize:'16px' }}>Send Diplomacy</h3>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
-            <input placeholder="Operation name" value={form.title} onChange={e => setForm(f => ({...f, title:e.target.value}))} />
-            <input placeholder="Target location" value={form.target_location} onChange={e => setForm(f => ({...f, target_location:e.target.value}))} />
+            <select value={form.target} onChange={e => setForm(f => ({...f, target:e.target.value}))}>
+              <option value="">Select target faction...</option>
+              {allFactions.map(f => <option key={f.id} value={f.id}>{f.name}{f.tag ? ` ${f.tag}` : ''}</option>)}
+            </select>
+            <select value={form.type} onChange={e => setForm(f => ({...f, type:e.target.value}))}>
+              {TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
           </div>
-          <input type="datetime-local" value={form.scheduled_at} onChange={e => setForm(f => ({...f, scheduled_at:e.target.value}))} />
-          <textarea placeholder="Briefing..." value={form.description} onChange={e => setForm(f => ({...f, description:e.target.value}))} rows={2} />
-          <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
-            <button className="btn btn-green" onClick={createRaid}>Create Operation</button>
-            <button className="btn btn-ghost" onClick={() => setShowForm(false)}>Cancel</button>
-            {form.title && (
-              <button className="btn btn-ghost" style={{ fontSize:'12px' }} onClick={saveTemplate}>
-                💾 Save as Template
-              </button>
-            )}
-          </div>
+          <textarea placeholder="Terms or message (optional)..." value={form.terms} onChange={e => setForm(f => ({...f, terms:e.target.value}))} rows={2} />
+          <button className="btn btn-green" style={{ alignSelf:'flex-start' }} onClick={submitDiplomacy}>Send Proposal</button>
         </div>
       )}
 
-      {upcoming.length === 0 && past.length === 0 && (
-        <div className="card" style={{ textAlign:'center', color:'var(--muted)', padding:'48px' }}>
-          No raids scheduled yet.{canManage ? ' Click "Schedule Raid" to plan your first operation.' : ' Check back when your leaders schedule an operation.'}
+      {canManage && allFactions.length === 0 && (
+        <div className="card" style={{ textAlign:'center', color:'var(--muted)', padding:'32px' }}>
+          No other factions on this server yet. Diplomacy opens up once more factions join.
         </div>
       )}
 
-      {upcoming.length > 0 && (
-        <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
-          <h3 style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'14px', letterSpacing:'0.1em' }}>UPCOMING OPERATIONS</h3>
-          {upcoming.map(raid => {
-            const myRsvp = rsvps[raid.id]?.find(r => r.user_id === userId)
-            const goingCount = rsvps[raid.id]?.length || 0
-            return (
-              <div key={raid.id} className="card" style={{ borderLeft:'3px solid var(--red)', display:'flex', flexDirection:'column', gap:'10px' }}>
-                <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', flexWrap:'wrap', gap:'10px' }}>
-                  <div>
-                    <h3 style={{ fontSize:'18px', fontWeight:700 }}>{raid.title}</h3>
-                    <div style={{ display:'flex', gap:'16px', marginTop:'6px', flexWrap:'wrap' }}>
-                      {raid.target_location && <span style={{ display:'flex', alignItems:'center', gap:'4px', fontSize:'13px', color:'var(--muted)' }}><MapPin size={13} /> {raid.target_location}</span>}
-                      <span style={{ display:'flex', alignItems:'center', gap:'4px', fontSize:'13px', color:'var(--muted)' }}><Calendar size={13} /> {new Date(raid.scheduled_at).toLocaleString()}</span>
-                      <span style={{ display:'flex', alignItems:'center', gap:'4px', fontSize:'13px', color:'var(--green)' }}><Users size={13} /> {goingCount} going</span>
-                    </div>
-                    {raid.description && <p style={{ fontSize:'14px', color:'var(--muted)', marginTop:'8px' }}>{raid.description}</p>}
-                  </div>
-                  <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
-                    <button onClick={() => toggleRsvp(raid.id)} className={`btn ${myRsvp ? 'btn-ghost' : 'btn-green'}`} style={{ fontSize:'13px', padding:'6px 14px' }}>
-                      {myRsvp ? '✓ Going' : 'RSVP'}
-                    </button>
-                    {canManage && (
-                      <button onClick={() => deleteRaid(raid.id)} className="btn btn-ghost" style={{ padding:'6px' }}>
-                        <Trash2 size={14} color="var(--red)" />
-                      </button>
-                    )}
-                  </div>
+      <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+        {records.length === 0 && (
+          <p style={{ color:'var(--muted)', textAlign:'center', padding:'40px' }}>No diplomacy records yet.</p>
+        )}
+        {records.map(rec => {
+          const meta = getTypeMeta(rec.type)
+          const Icon = meta.icon
+          const isReceiver = rec.faction_b === faction?.id
+          const isPending = rec.status === 'pending'
+          return (
+            <div key={rec.id} className="card" style={{ display:'flex', gap:'16px', alignItems:'flex-start', borderLeft:`3px solid ${meta.color}` }}>
+              <Icon size={20} color={meta.color} style={{ marginTop:'2px', flexShrink:0 }} />
+              <div style={{ flex:1 }}>
+                <div style={{ display:'flex', gap:'10px', alignItems:'center', flexWrap:'wrap', marginBottom:'4px' }}>
+                  <strong>{rec.faction_a_info?.name}</strong>
+                  <span style={{ color:'var(--muted)', fontSize:'13px' }}>→</span>
+                  <strong>{rec.faction_b_info?.name}</strong>
+                  <span className={`tag ${statusTag[rec.status] || 'tag-yellow'}`}>{rec.status}</span>
+                  <span style={{ color:meta.color, fontSize:'13px' }}>{meta.label}</span>
                 </div>
+                {rec.terms && <p style={{ color:'var(--muted)', fontSize:'14px', marginTop:'4px' }}>{rec.terms}</p>}
+                {isPending && isReceiver && canManage && (
+                  <div style={{ display:'flex', gap:'8px', marginTop:'10px' }}>
+                    <button className="btn btn-green" style={{ fontSize:'13px', padding:'5px 14px' }} onClick={() => updateStatus(rec.id, 'active')}>Accept</button>
+                    <button className="btn btn-ghost" style={{ fontSize:'13px', padding:'5px 14px', color:'var(--red)' }} onClick={() => updateStatus(rec.id, 'rejected')}>Reject</button>
+                  </div>
+                )}
+                {isPending && isReceiver && !canManage && (
+                  <p style={{ fontSize:'12px', color:'var(--muted)', marginTop:'8px' }}>⏳ Awaiting leader response</p>
+                )}
               </div>
-            )
-          })}
-        </div>
-      )}
-
-      {past.length > 0 && (
-        <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
-          <h3 style={{ fontFamily:'Share Tech Mono', color:'var(--muted)', fontSize:'14px', letterSpacing:'0.1em' }}>PAST OPERATIONS</h3>
-          {past.map(raid => (
-            <PastRaid key={raid.id} raid={raid} userId={userId} faction={faction} canManage={canManage} setRaids={setRaids} />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function PastRaid({ raid, userId, faction, canManage, setRaids }) {
-  const [open, setOpen] = useState(false)
-  const [debrief, setDebrief] = useState({
-    outcome: raid.outcome || '',
-    casualties: raid.casualties || 0,
-    loot_summary: raid.loot_summary || '',
-    debrief_notes: raid.debrief_notes || '',
-    rating: raid.rating || 0
-  })
-
-  async function save() {
-    await supabase.from('raids').update(debrief).eq('id', raid.id)
-    setRaids(r => r.map(x => x.id === raid.id ? {...x, ...debrief} : x))
-    setOpen(false)
-    if (faction) {
-      await supabase.from('events').insert({
-        faction_id: faction.id, created_by: userId, type: 'raid',
-        title: `Raid Debrief: ${raid.title}`,
-        description: `Outcome: ${debrief.outcome} | Casualties: ${debrief.casualties} | Loot: ${debrief.loot_summary}`
-      })
-    }
-  }
-
-  return (
-    <div className="card" style={{ borderLeft:'3px solid var(--border)', display:'flex', flexDirection:'column', gap:'10px' }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'8px' }}>
-        <div>
-          <span style={{ fontWeight:700 }}>{raid.title}</span>
-          {raid.target_location && <span style={{ color:'var(--muted)', fontSize:'13px', marginLeft:'10px' }}>{raid.target_location}</span>}
-          <div style={{ fontSize:'12px', color:'var(--muted)', marginTop:'2px' }}>{new Date(raid.scheduled_at).toLocaleString()}</div>
-        </div>
-        <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
-          {raid.outcome && <span style={{ fontSize:'13px', color: raid.outcome==='success' ? 'var(--green)' : 'var(--red)' }}>{raid.outcome==='success' ? '✅ Success' : raid.outcome==='partial' ? '⚠️ Partial' : raid.outcome==='aborted' ? '🚫 Aborted' : '❌ Failed'}</span>}
-          {raid.rating > 0 && <span style={{ color:'var(--yellow)' }}>{'★'.repeat(raid.rating)}</span>}
-          {canManage && (
-            <button onClick={() => setOpen(o => !o)} className="btn btn-ghost" style={{ fontSize:'12px', padding:'4px 10px' }}>
-              {raid.outcome ? 'Edit Debrief' : '📋 Debrief'}
-            </button>
-          )}
-        </div>
+            </div>
+          )
+        })}
       </div>
-
-      {open && canManage && (
-        <div style={{ background:'#0d1a0d', border:'1px solid var(--green-dim)', borderRadius:'6px', padding:'14px', display:'flex', flexDirection:'column', gap:'10px' }}>
-          <h4 style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'13px' }}>OPERATION DEBRIEF</h4>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
-            <div>
-              <label style={{ fontSize:'12px', color:'var(--muted)', display:'block', marginBottom:'4px' }}>OUTCOME</label>
-              <select value={debrief.outcome} onChange={e => setDebrief(d => ({...d, outcome:e.target.value}))}>
-                <option value="">Select outcome...</option>
-                <option value="success">✅ Success</option>
-                <option value="partial">⚠️ Partial</option>
-                <option value="fail">❌ Failed</option>
-                <option value="aborted">🚫 Aborted</option>
-              </select>
-            </div>
-            <div>
-              <label style={{ fontSize:'12px', color:'var(--muted)', display:'block', marginBottom:'4px' }}>CASUALTIES</label>
-              <input type="number" min={0} value={debrief.casualties} onChange={e => setDebrief(d => ({...d, casualties:parseInt(e.target.value)||0}))} />
-            </div>
-          </div>
-          <input placeholder="Loot summary (e.g. 3x KA-74, medical kits...)" value={debrief.loot_summary} onChange={e => setDebrief(d => ({...d, loot_summary:e.target.value}))} />
-          <textarea placeholder="Notes — what went well, what to improve..." value={debrief.debrief_notes} onChange={e => setDebrief(d => ({...d, debrief_notes:e.target.value}))} rows={2} />
-          <div>
-            <label style={{ fontSize:'12px', color:'var(--muted)', display:'block', marginBottom:'6px' }}>RATING</label>
-            <div style={{ display:'flex', gap:'4px' }}>
-              {[1,2,3,4,5].map(n => (
-                <button key={n} onClick={() => setDebrief(d => ({...d, rating:n}))} style={{ background:'transparent', border:'none', cursor:'pointer', fontSize:'22px' }}>
-                  {n <= debrief.rating ? '★' : '☆'}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div style={{ display:'flex', gap:'8px' }}>
-            <button className="btn btn-green" onClick={save}>Save Debrief</button>
-            <button className="btn btn-ghost" onClick={() => setOpen(false)}>Cancel</button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
