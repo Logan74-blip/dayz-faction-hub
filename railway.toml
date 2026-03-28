@@ -1,0 +1,6 @@
+[build]
+buildCommand = "echo ready"
+
+[deploy]
+startCommand = "node bot.js"
+restartPolicyType = "always"
