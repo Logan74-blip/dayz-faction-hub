@@ -11,12 +11,3 @@
     "@supabase/supabase-js": "^2.0.0"
   }
 }
-```
-
-Press **Ctrl+S**
-
----
-
-**Step 3** — Go to **Railway** → click your service → click **Settings** tab → find **Root Directory** → type:
-```
-/bot
