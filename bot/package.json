@@ -2,7 +2,7 @@
   "name": "dayz-faction-hub-bot",
   "version": "1.0.0",
   "type": "module",
-  "main": "main": "bot.js",
+  "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
   },
