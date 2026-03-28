@@ -76,10 +76,8 @@ export default function Resources({ session }) {
   async function runOcr(imageData) {
     setOcrLoading(true)
     setOcrResults([])
-
     try {
       const apiKey = import.meta.env.VITE_OCR_API_KEY || 'helloworld'
-
       const formData = new FormData()
       formData.append('base64Image', imageData)
       formData.append('language', 'eng')
@@ -87,50 +85,33 @@ export default function Resources({ session }) {
       formData.append('detectOrientation', 'true')
       formData.append('scale', 'true')
       formData.append('OCREngine', '2')
-
       const response = await fetch('https://api.ocr.space/parse/image', {
         method: 'POST',
         headers: { 'apikey': apiKey },
         body: formData
       })
-
       const result = await response.json()
-
       if (result.IsErroredOnProcessing) {
         throw new Error(result.ErrorMessage?.[0] || 'OCR processing failed')
       }
-
       const text = result.ParsedResults?.[0]?.ParsedText || ''
-
-      const lines = text
-        .split('\n')
-        .map(l => l.trim())
-        .filter(l => l.length > 2 && l.length < 80)
-
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 2 && l.length < 80)
       const seen = new Set()
       const detected = []
-
       for (const line of lines) {
         const qtyMatch = line.match(/[xX×]\s*(\d+)|(\d+)\s*[xX×]|\((\d+)\)/i)
-        const qty = qtyMatch
-          ? parseInt(qtyMatch[1] || qtyMatch[2] || qtyMatch[3])
-          : 1
-
+        const qty = qtyMatch ? parseInt(qtyMatch[1] || qtyMatch[2] || qtyMatch[3]) : 1
         const cleaned = line
           .replace(/[xX×]\s*\d+|\d+\s*[xX×]|\(\d+\)/gi, '')
           .replace(/[^a-zA-Z0-9\s\-\.]/g, '')
           .replace(/\s+/g, ' ')
           .trim()
-
         if (cleaned.length < 2) continue
-
         const match = matchItem(cleaned)
         if (!match) continue
-
         const key = match.name.toLowerCase()
         if (seen.has(key)) continue
         seen.add(key)
-
         detected.push({
           name: match.name,
           quantity: Math.min(Math.max(qty, 1), 9999),
@@ -140,16 +121,21 @@ export default function Resources({ session }) {
           selected: true
         })
       }
-
       detected.sort((a, b) => {
         const order = { high: 0, medium: 1, low: 2, unknown: 3 }
         return (order[a.confidence] || 3) - (order[b.confidence] || 3)
       })
-
       if (detected.length === 0) {
         alert('No DayZ items detected. Try a clearer screenshot with item names visible.')
       }
-
+      setOcrResults(detected)
+      setSelectedOcr(detected.map((_, i) => i))
+    } catch (err) {
+      console.error('OCR error:', err)
+      alert('OCR failed: ' + (err.message || 'Please try again.'))
+    }
+    setOcrLoading(false)
+  }
 
   function toggleOcrSelect(i) {
     setSelectedOcr(s => s.includes(i) ? s.filter(x => x !== i) : [...s, i])
@@ -195,58 +181,34 @@ export default function Resources({ session }) {
         )}
       </div>
 
-      {/* OCR Scanner */}
       {ocrMode && (
         <div className="card" style={{ display:'flex', flexDirection:'column', gap:'14px', borderColor:'var(--green-dim)' }}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
             <h3 style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'14px' }}>📷 GEAR SCANNER</h3>
-            <button
-              onClick={() => { setOcrMode(false); setOcrImage(null); setOcrResults([]) }}
-              className="btn btn-ghost"
-              style={{ padding:'4px 8px' }}
-            >
+            <button onClick={() => { setOcrMode(false); setOcrImage(null); setOcrResults([]) }} className="btn btn-ghost" style={{ padding:'4px 8px' }}>
               <X size={14} />
             </button>
           </div>
-
           <p style={{ fontSize:'13px', color:'var(--muted)' }}>
             Upload a screenshot of your inventory or stash and we'll detect the items automatically.
           </p>
-
           {!ocrImage && (
             <>
-              <button
-                className="btn btn-green"
-                style={{ alignSelf:'flex-start' }}
-                onClick={() => fileRef.current.click()}
-              >
+              <button className="btn btn-green" style={{ alignSelf:'flex-start' }} onClick={() => fileRef.current.click()}>
                 Upload Screenshot
               </button>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                style={{ display:'none' }}
-                onChange={handleImageUpload}
-              />
+              <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }} onChange={handleImageUpload} />
             </>
           )}
-
           {ocrImage && (
-            <img
-              src={ocrImage}
-              alt="scan"
-              style={{ maxWidth:'100%', maxHeight:'200px', objectFit:'contain', borderRadius:'4px', border:'1px solid var(--border)' }}
-            />
+            <img src={ocrImage} alt="scan" style={{ maxWidth:'100%', maxHeight:'200px', objectFit:'contain', borderRadius:'4px', border:'1px solid var(--border)' }} />
           )}
-
           {ocrLoading && (
             <div style={{ color:'var(--green)', fontFamily:'Share Tech Mono', fontSize:'13px', display:'flex', alignItems:'center', gap:'8px' }}>
               <div className="spinner" style={{ width:'16px', height:'16px', borderWidth:'2px' }} />
               SCANNING FOR ITEMS...
             </div>
           )}
-
           {ocrResults.length > 0 && (
             <>
               <p style={{ fontSize:'13px', color:'var(--muted)' }}>
@@ -262,8 +224,7 @@ export default function Resources({ session }) {
                       background: selectedOcr.includes(i) ? '#0d1a0d' : 'var(--surface)',
                       borderRadius:'6px',
                       border:`1px solid ${item.possibleMod ? 'var(--yellow)' : selectedOcr.includes(i) ? 'var(--green-dim)' : 'var(--border)'}`,
-                      cursor:'pointer',
-                      opacity: selectedOcr.includes(i) ? 1 : 0.5
+                      cursor:'pointer', opacity: selectedOcr.includes(i) ? 1 : 0.5
                     }}
                   >
                     <input
@@ -299,30 +260,18 @@ export default function Resources({ session }) {
                 ))}
               </div>
               <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
-                <button
-                  className="btn btn-green"
-                  style={{ display:'flex', alignItems:'center', gap:'6px' }}
-                  onClick={importOcrItems}
-                >
+                <button className="btn btn-green" style={{ display:'flex', alignItems:'center', gap:'6px' }} onClick={importOcrItems}>
                   <Check size={14} /> Import {selectedOcr.length} item{selectedOcr.length !== 1 ? 's' : ''}
                 </button>
-                <button
-                  className="btn btn-ghost"
-                  onClick={() => { setOcrImage(null); setOcrResults([]); fileRef.current.click() }}
-                >
+                <button className="btn btn-ghost" onClick={() => { setOcrImage(null); setOcrResults([]); setTimeout(() => fileRef.current.click(), 100) }}>
                   Try another image
                 </button>
-                <button
-                  className="btn btn-ghost"
-                  style={{ marginLeft:'auto' }}
-                  onClick={() => setSelectedOcr(ocrResults.map((_, i) => i))}
-                >
+                <button className="btn btn-ghost" style={{ marginLeft:'auto' }} onClick={() => setSelectedOcr(ocrResults.map((_, i) => i))}>
                   Select all
                 </button>
               </div>
             </>
           )}
-
           {ocrImage && !ocrLoading && ocrResults.length === 0 && (
             <p style={{ color:'var(--red)', fontSize:'13px' }}>
               No items detected. Try a clearer screenshot with visible item names.
@@ -331,7 +280,6 @@ export default function Resources({ session }) {
         </div>
       )}
 
-      {/* Manual add */}
       {faction && (
         <div className="card" style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
           <h3 style={{ fontSize:'16px', fontWeight:700, display:'flex', alignItems:'center', gap:'8px' }}>
@@ -348,9 +296,7 @@ export default function Resources({ session }) {
               {CATEGORIES.map(c => <option key={c}>{c}</option>)}
             </select>
             <input
-              type="number"
-              min={1}
-              value={form.quantity}
+              type="number" min={1} value={form.quantity}
               onChange={e => setForm(f => ({...f, quantity:e.target.value}))}
               placeholder="Qty"
             />
@@ -368,26 +314,19 @@ export default function Resources({ session }) {
         </div>
       )}
 
-      {/* Filter tabs */}
       <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
         {['All', ...CATEGORIES].map(c => (
-          <button
-            key={c}
-            onClick={() => setFilter(c)}
-            className="btn"
-            style={{
-              padding:'5px 14px', fontSize:'13px',
-              background: filter===c ? 'var(--green-dim)' : 'var(--surface)',
-              color: filter===c ? '#fff' : 'var(--muted)',
-              border:'1px solid var(--border)'
-            }}
-          >
+          <button key={c} onClick={() => setFilter(c)} className="btn" style={{
+            padding:'5px 14px', fontSize:'13px',
+            background: filter===c ? 'var(--green-dim)' : 'var(--surface)',
+            color: filter===c ? '#fff' : 'var(--muted)',
+            border:'1px solid var(--border)'
+          }}>
             {c}
           </button>
         ))}
       </div>
 
-      {/* Items list */}
       <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
         {filtered.length === 0 && (
           <p style={{ color:'var(--muted)', textAlign:'center', padding:'40px' }}>
@@ -398,9 +337,7 @@ export default function Resources({ session }) {
           <div key={item.id} className="card" style={{ display:'flex', alignItems:'center', gap:'16px', padding:'14px 20px' }}>
             <div style={{ flex:1 }}>
               <span style={{ fontWeight:700, fontSize:'16px' }}>{item.name}</span>
-              {item.notes && (
-                <span style={{ color:'var(--muted)', fontSize:'13px', marginLeft:'10px' }}>{item.notes}</span>
-              )}
+              {item.notes && <span style={{ color:'var(--muted)', fontSize:'13px', marginLeft:'10px' }}>{item.notes}</span>}
             </div>
             <span className="tag tag-yellow" style={{ minWidth:'80px', textAlign:'center' }}>{item.category}</span>
             <span style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'18px', minWidth:'50px', textAlign:'right' }}>
