@@ -27,20 +27,20 @@ export default function Settings({ session }) {
   const canEdit = role === 'leader' || role === 'co-leader'
 
   useEffect(() => {
-    if (faction) {
-      setForm({
-        name: faction.name || '',
-        tag: faction.tag || '',
-        description: faction.description || '',
-        is_recruiting: faction.is_recruiting ?? true
-      })
-      setServerInput(faction.server_name || '')
-      loadSettings()
-      loadInvite()
-      loadMembers()
-      loadExistingServers()
-    }
-  }, [faction?.id])
+  if (faction?.id) {
+    setForm({
+      name: faction.name || '',
+      tag: faction.tag || '',
+      description: faction.description || '',
+      is_recruiting: faction.is_recruiting ?? true
+    })
+    setServerInput(faction.server_name || '')
+    loadSettings()
+    loadInvite()
+    loadMembers()
+    loadExistingServers()
+  }
+}, [faction?.id, faction?.name, faction?.server_name, faction?.tag, faction?.description])
 
   async function loadExistingServers() {
     const { data } = await supabase
