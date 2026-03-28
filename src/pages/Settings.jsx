@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { useRole } from '../hooks/useRole'
-import { Save, Link, Copy, RefreshCw, Plus } from 'lucide-react'
+import { Save, Link, Copy, RefreshCw } from 'lucide-react'
 
 const OFFICIAL_SERVERS = [
   'Chernarus Official #1',
@@ -14,15 +14,15 @@ const OFFICIAL_SERVERS = [
 
 export default function Settings({ session }) {
   const { role, faction } = useRole(session.user.id)
-  const [form, setForm] = useState({ name:'', tag:'', description:'', server_name:'', is_recruiting: true })
-  const [settings, setSettings] = useState({ webhook_url:'', notify_raids: true, notify_diplomacy: true, notify_bounties: true, notify_announcements: true })
-  const [invite, setInvite] = useState(null)
-  const [saved, setSaved] = useState(false)
-  const [inviteLoading, setInviteLoading] = useState(false)
-  const [existingServers, setExistingServers] = useState([])
+  const [form, setForm] = useState({ name:'', tag:'', description:'', is_recruiting:true })
   const [serverInput, setServerInput] = useState('')
   const [showCustomInput, setShowCustomInput] = useState(false)
+  const [existingServers, setExistingServers] = useState([])
+  const [settings, setSettings] = useState({ webhook_url:'', notify_raids:true, notify_diplomacy:true, notify_bounties:true, notify_announcements:true })
+  const [invite, setInvite] = useState(null)
   const [members, setMembers] = useState([])
+  const [saved, setSaved] = useState(false)
+  const [inviteLoading, setInviteLoading] = useState(false)
   const userId = session.user.id
   const canEdit = role === 'leader' || role === 'co-leader'
 
@@ -32,7 +32,6 @@ export default function Settings({ session }) {
         name: faction.name || '',
         tag: faction.tag || '',
         description: faction.description || '',
-        server_name: faction.server_name || '',
         is_recruiting: faction.is_recruiting ?? true
       })
       setServerInput(faction.server_name || '')
@@ -81,18 +80,26 @@ export default function Settings({ session }) {
   }
 
   async function saveFaction() {
-    if (!faction || !canEdit) return
-    await supabase.from('factions').update({
-      name: form.name,
-      tag: form.tag,
-      description: form.description,
-      server_name: serverInput.trim(),
-      is_recruiting: form.is_recruiting
-    }).eq('id', faction.id)
+  if (!faction || !canEdit) return
+  const serverToSave = serverInput.trim()
+  const { error } = await supabase.from('factions').update({
+    name: form.name,
+    tag: form.tag,
+    description: form.description,
+    server_name: serverToSave || null,
+    is_recruiting: form.is_recruiting
+  }).eq('id', faction.id)
+  if (!error) {
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
+    setShowCustomInput(false)
     loadExistingServers()
+    // Force reload the page so navbar and faction data refreshes
+    setTimeout(() => window.location.reload(), 1000)
+  } else {
+    alert('Failed to save: ' + error.message)
   }
+}
 
   async function saveSettings() {
     if (!faction) return
@@ -130,10 +137,10 @@ export default function Settings({ session }) {
     alert('Invite link copied!')
   }
 
-  async function kickMember(memberId) {
+  async function kickMember(userIdToKick) {
     if (!window.confirm('Remove this member from the faction?')) return
-    await supabase.from('faction_members').delete().eq('id', memberId)
-    await supabase.from('member_history').insert({ faction_id: faction.id, user_id: memberId, action: 'left' })
+    await supabase.from('faction_members').delete().eq('faction_id', faction.id).eq('user_id', userIdToKick)
+    await supabase.from('member_history').insert({ faction_id: faction.id, user_id: userIdToKick, action: 'left' })
     loadMembers()
   }
 
@@ -144,44 +151,27 @@ export default function Settings({ session }) {
 
   async function sendReport(type) {
     if (!settings.webhook_url || !faction) return
-    const [members, territories, raids, bounties] = await Promise.all([
+    const [membersRes, territoriesRes, raidsRes, bountiesRes] = await Promise.all([
       supabase.from('faction_members').select('id', { count:'exact', head:true }).eq('faction_id', faction.id),
       supabase.from('territories').select('id', { count:'exact', head:true }).eq('faction_id', faction.id),
       supabase.from('raids').select('id', { count:'exact', head:true }).eq('faction_id', faction.id),
       supabase.from('bounties').select('id', { count:'exact', head:true }).eq('faction_id', faction.id).eq('status', 'completed'),
     ])
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-    const { data: recentRaids } = await supabase.from('raids').select('title, outcome, scheduled_at').eq('faction_id', faction.id).gte('scheduled_at', weekAgo).order('scheduled_at', { ascending: false }).limit(5)
     const fields = [
-      { name:'👥 Members', value:`${members.count || 0}`, inline:true },
-      { name:'🗺️ Territories', value:`${territories.count || 0}`, inline:true },
-      { name:'⚔️ Total Raids', value:`${raids.count || 0}`, inline:true },
-      { name:'🎯 Bounties', value:`${bounties.count || 0}`, inline:true },
+      { name:'👥 Members', value:`${membersRes.count || 0}`, inline:true },
+      { name:'🗺️ Territories', value:`${territoriesRes.count || 0}`, inline:true },
+      { name:'⚔️ Total Raids', value:`${raidsRes.count || 0}`, inline:true },
+      { name:'🎯 Bounties', value:`${bountiesRes.count || 0}`, inline:true },
     ]
-    if (type === 'weekly' && recentRaids?.length) {
-      fields.push({ name:'⚔️ Recent Raids', value: recentRaids.map(r => `• ${r.title} ${r.outcome === 'success' ? '✅' : r.outcome === 'fail' ? '❌' : '⏳'}`).join('\n') })
-    }
     await fetch(settings.webhook_url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        embeds: [{
-          title: `${type === 'weekly' ? '📊 Weekly' : '📋 Daily'} Report — ${faction.name}`,
-          color: 0x4ade80, fields,
-          footer: { text: `Faction Hub • ${new Date().toLocaleDateString()}` },
-          timestamp: new Date().toISOString()
-        }]
-      })
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ embeds:[{ title:`${type === 'weekly' ? '📊 Weekly' : '📋 Daily'} Report — ${faction.name}`, color:0x4ade80, fields, footer:{ text:`Faction Hub • ${new Date().toLocaleDateString()}` }, timestamp:new Date().toISOString() }] })
     }).catch(() => {})
-    await supabase.from('faction_reports').insert({ faction_id: faction.id, type, summary: { members: members.count, territories: territories.count } })
+    await supabase.from('faction_reports').insert({ faction_id: faction.id, type, summary:{ members: membersRes.count } })
     alert(`${type === 'weekly' ? 'Weekly' : 'Daily'} report sent!`)
   }
 
-  // Build the server dropdown list
-  const allServers = [
-    ...OFFICIAL_SERVERS,
-    ...existingServers.filter(s => !OFFICIAL_SERVERS.includes(s))
-  ]
+  const communityServers = existingServers.filter(s => !OFFICIAL_SERVERS.includes(s))
 
   if (!faction) return (
     <div style={{ padding:'80px', textAlign:'center', color:'var(--muted)' }}>
@@ -217,7 +207,9 @@ export default function Settings({ session }) {
 
           {/* Server selector */}
           <div>
-            <label style={{ fontSize:'12px', color:'var(--muted)', display:'block', marginBottom:'4px' }}>SERVER</label>
+            <label style={{ fontSize:'12px', color:'var(--muted)', display:'block', marginBottom:'4px' }}>
+              SERVER {serverInput && <span style={{ color:'var(--green)' }}>— currently: {serverInput}</span>}
+            </label>
             {!showCustomInput ? (
               <div style={{ display:'flex', gap:'8px' }}>
                 <select
@@ -233,14 +225,14 @@ export default function Settings({ session }) {
                   style={{ flex:1 }}
                 >
                   <option value="">— No server set —</option>
-                  <optgroup label="Official Servers">
+                  <optgroup label="🏢 Official Servers">
                     {OFFICIAL_SERVERS.map(s => (
                       <option key={s} value={s}>{s}</option>
                     ))}
                   </optgroup>
-                  {existingServers.filter(s => !OFFICIAL_SERVERS.includes(s)).length > 0 && (
-                    <optgroup label="Community & Modded Servers">
-                      {existingServers.filter(s => !OFFICIAL_SERVERS.includes(s)).map(s => (
+                  {communityServers.length > 0 && (
+                    <optgroup label="⚡ Community & Modded Servers">
+                      {communityServers.map(s => (
                         <option key={s} value={s}>{s}</option>
                       ))}
                     </optgroup>
@@ -249,44 +241,55 @@ export default function Settings({ session }) {
                 </select>
               </div>
             ) : (
-              <div style={{ display:'flex', gap:'8px' }}>
+              <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
                 <input
                   autoFocus
-                  placeholder="Type your server name exactly as it appears in-game..."
+                  placeholder="Type your server name exactly (e.g. DayZ Community PvP #1)"
                   value={serverInput}
                   onChange={e => setServerInput(e.target.value)}
-                  style={{ flex:1 }}
                 />
-                <button
-                  className="btn btn-ghost"
-                  onClick={() => { setShowCustomInput(false); setServerInput(faction.server_name || '') }}
-                  style={{ fontSize:'12px' }}
-                >
-                  Cancel
-                </button>
+                <div style={{ display:'flex', gap:'8px' }}>
+                  <button
+                    className="btn btn-green"
+                    style={{ fontSize:'12px' }}
+                    onClick={() => setShowCustomInput(false)}
+                    disabled={!serverInput.trim()}
+                  >
+                    ✓ Use This Server
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    style={{ fontSize:'12px' }}
+                    onClick={() => {
+                      setShowCustomInput(false)
+                      setServerInput(faction.server_name || '')
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+                <p style={{ fontSize:'11px', color:'var(--yellow)' }}>
+                  ⚠️ Type carefully — other factions will see this exact name and can join your server group. Click "Use This Server" then "Save Changes" below.
+                </p>
               </div>
             )}
-            <p style={{ fontSize:'11px', color:'var(--muted)', marginTop:'6px' }}>
-              {showCustomInput
-                ? '⚠️ Type carefully — other factions will see this exact name and can join your server group'
-                : 'Community servers only appear here if another faction has added them. Use "Add a new server" to add yours.'
-              }
-            </p>
           </div>
 
-          <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-            <label style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer', fontSize:'14px' }}>
-              <input
-                type="checkbox"
-                checked={form.is_recruiting}
-                onChange={e => setForm(f => ({...f, is_recruiting:e.target.checked}))}
-                style={{ width:'auto', accentColor:'var(--green)' }}
-              />
-              Open for recruitment
-            </label>
-          </div>
+          <label style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer', fontSize:'14px' }}>
+            <input
+              type="checkbox"
+              checked={form.is_recruiting}
+              onChange={e => setForm(f => ({...f, is_recruiting:e.target.checked}))}
+              style={{ width:'auto', accentColor:'var(--green)' }}
+            />
+            Open for recruitment
+          </label>
 
-          <button className="btn btn-green" style={{ alignSelf:'flex-start', display:'flex', alignItems:'center', gap:'8px' }} onClick={saveFaction}>
+          <button
+            className="btn btn-green"
+            style={{ alignSelf:'flex-start', display:'flex', alignItems:'center', gap:'8px' }}
+            onClick={saveFaction}
+          >
             <Save size={14} /> {saved ? '✓ Saved!' : 'Save Changes'}
           </button>
         </div>
