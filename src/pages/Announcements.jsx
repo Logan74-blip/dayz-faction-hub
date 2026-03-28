@@ -1,75 +1,58 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { useRole } from '../hooks/useRole'
-import { Megaphone, Pin, Trash2, Plus } from 'lucide-react'
+import { Plus, Pin, Trash2 } from 'lucide-react'
 
 export default function Announcements({ session }) {
-  const { role, faction, perms } = useRole(session.user.id)
+  const { role, faction } = useRole(session.user.id)
   const [announcements, setAnnouncements] = useState([])
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ title:'', body:'', pinned:false })
+  const [loading, setLoading] = useState(true)
   const userId = session.user.id
+  const canPost = role === 'leader' || role === 'co-leader'
 
-  useEffect(() => { if (faction) load() }, [faction])
+  useEffect(() => {
+    if (faction?.id) load()
+  }, [faction?.id])
 
-  async function post() {
-  if (!form.title.trim() || !form.body.trim() || !faction) return
-  const { data, error } = await supabase.from('announcements').insert({
-    faction_id: faction.id,
-    created_by: userId,
-    title: form.title,
-    body: form.body,
-    pinned: form.pinned
-  }).select().single()
-
-  if (!error) {
-    setAnnouncements(a => [data, ...a])
-    setForm({ title:'', body:'', pinned:false })
-    setShowForm(false)
-    // Log to event feed
-    await supabase.from('events').insert({
-      faction_id: faction.id,
-      created_by: userId,
-      type: 'custom',
-      title: `📣 Announcement: ${form.title}`,
-      description: form.body.slice(0, 100)
-    })
-    // Notify members
-    const { data: members } = await supabase.from('faction_members').select('user_id').eq('faction_id', faction.id).neq('user_id', userId)
-    if (members?.length) {
-      await supabase.from('notifications').insert(members.map(m => ({
-        faction_id: faction.id,
-        user_id: m.user_id,
-        type: 'announcement',
-        title: `📣 ${form.title}`,
-        body: form.body.slice(0, 80)
-      })))
-    }
+  async function load() {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from('announcements')
+      .select('*, profile:profiles!announcements_created_by_fkey(discord_username, discord_avatar)')
+      .eq('faction_id', faction.id)
+      .order('pinned', { ascending: false })
+      .order('created_at', { ascending: false })
+    if (!error) setAnnouncements(data || [])
+    setLoading(false)
   }
-}
 
   async function post() {
-    if (!form.title.trim() || !form.body.trim()) return
+    if (!form.title.trim() || !form.body.trim() || !faction) return
     const { data, error } = await supabase.from('announcements').insert({
       faction_id: faction.id,
       created_by: userId,
       title: form.title,
       body: form.body,
       pinned: form.pinned
-    }).select().single()
+    }).select('*, profile:profiles!announcements_created_by_fkey(discord_username, discord_avatar)').single()
+
     if (!error) {
-      setAnnouncements(a => [data, ...a])
+      setAnnouncements(a => form.pinned ? [data, ...a] : [...a.filter(x => x.pinned), data, ...a.filter(x => !x.pinned)])
       setForm({ title:'', body:'', pinned:false })
       setShowForm(false)
-      // Notify all members
+      await supabase.from('events').insert({
+        faction_id: faction.id, created_by: userId,
+        type: 'custom', title: `📣 Announcement: ${form.title}`,
+        description: form.body.slice(0, 100)
+      })
       const { data: members } = await supabase.from('faction_members').select('user_id').eq('faction_id', faction.id).neq('user_id', userId)
       if (members?.length) {
         await supabase.from('notifications').insert(members.map(m => ({
-          faction_id: faction.id,
-          user_id: m.user_id,
-          type: 'announcement',
-          title: `📣 New Announcement: ${form.title}`,
-          body: form.body.slice(0, 80) + (form.body.length > 80 ? '...' : '')
+          faction_id: faction.id, user_id: m.user_id,
+          type: 'announcement', title: `📣 ${form.title}`,
+          body: form.body.slice(0, 80)
         })))
       }
     }
@@ -82,10 +65,15 @@ export default function Announcements({ session }) {
 
   async function togglePin(id, pinned) {
     await supabase.from('announcements').update({ pinned: !pinned }).eq('id', id)
-    setAnnouncements(a => a.map(x => x.id === id ? {...x, pinned: !pinned} : x).sort((a,b) => b.pinned - a.pinned))
+    setAnnouncements(a => a.map(x => x.id === id ? {...x, pinned: !pinned} : x)
+      .sort((a, b) => b.pinned - a.pinned || new Date(b.created_at) - new Date(a.created_at)))
   }
 
-  const canPost = role === 'leader' || role === 'co-leader'
+  if (loading) return (
+    <div style={{ padding:'80px', textAlign:'center', color:'var(--muted)', fontFamily:'Share Tech Mono' }}>
+      LOADING...
+    </div>
+  )
 
   return (
     <div style={{ maxWidth:800, margin:'40px auto', padding:'0 24px', display:'flex', flexDirection:'column', gap:'24px' }}>
@@ -117,9 +105,9 @@ export default function Announcements({ session }) {
         </div>
       )}
 
-      {announcements.length === 0 && (
+      {announcements.length === 0 && !loading && (
         <div className="card" style={{ textAlign:'center', color:'var(--muted)', padding:'48px' }}>
-          No announcements yet. Leadership will post updates here.
+          No announcements yet. {canPost ? 'Click "Post Announcement" to create one.' : 'Leadership will post updates here.'}
         </div>
       )}
 

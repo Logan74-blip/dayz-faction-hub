@@ -18,19 +18,33 @@ export default function Diplomacy({ session }) {
   useEffect(() => { loadData() }, [])
 
   async function loadData() {
-    const { data: mem } = await supabase.from('faction_members').select('*, factions(*)').eq('user_id', userId).maybeSingle()
-    if (!mem?.factions) return
-    setFaction(mem.factions)
+  const { data: mem } = await supabase
+    .from('faction_members')
+    .select('*, factions(*)')
+    .eq('user_id', userId)
+    .maybeSingle()
 
-    const { data: facs } = await supabase.from('factions').select('id,name').neq('id', mem.factions.id)
-    setAllFactions(facs || [])
+  if (!mem?.factions) return
+  setFaction(mem.factions)
 
-    const { data: recs } = await supabase.from('diplomacy')
-      .select('*, faction_a_info:factions!diplomacy_faction_a_fkey(name), faction_b_info:factions!diplomacy_faction_b_fkey(name)')
-      .or(`faction_a.eq.${mem.factions.id},faction_b.eq.${mem.factions.id}`)
-      .order('created_at', { ascending: false })
-    setRecords(recs || [])
-  }
+  const { data: facs } = await supabase
+    .from('factions')
+    .select('id, name, tag')
+    .neq('id', mem.factions.id)
+    .order('name')
+  setAllFactions(facs || [])
+
+  const { data: recs } = await supabase
+    .from('diplomacy')
+    .select(`
+      *,
+      faction_a_info:factions!diplomacy_faction_a_fkey(id, name, tag),
+      faction_b_info:factions!diplomacy_faction_b_fkey(id, name, tag)
+    `)
+    .or(`faction_a.eq.${mem.factions.id},faction_b.eq.${mem.factions.id}`)
+    .order('created_at', { ascending: false })
+  setRecords(recs || [])
+}
 
   async function submitDiplomacy() {
   if (!form.target || !faction) return

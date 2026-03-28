@@ -16,9 +16,12 @@ export default function Leaderboard({ session }) {
   const [myFactionId, setMyFactionId] = useState(null)
 
   useEffect(() => {
-    loadMyFaction()
-    loadLeaderboard()
-  }, [])
+  loadMyFaction()
+  loadLeaderboard()
+  // Auto-refresh every 60 seconds
+  const interval = setInterval(loadLeaderboard, 60000)
+  return () => clearInterval(interval)
+}, [])
 
   async function loadMyFaction() {
     const { data } = await supabase.from('faction_members').select('faction_id').eq('user_id', session.user.id).maybeSingle()
@@ -59,6 +62,9 @@ export default function Leaderboard({ session }) {
       <div>
         <h1 style={{ fontFamily:'Share Tech Mono', fontSize:'24px', color:'var(--green)' }}>LEADERBOARD</h1>
         <p style={{ color:'var(--muted)', marginTop:'4px' }}>Top factions ranked across all servers</p>
+        <button onClick={loadLeaderboard} className="btn btn-ghost" style={{ fontSize:'12px', padding:'5px 12px', display:'flex', alignItems:'center', gap:'6px' }}>
+  🔄 Refresh
+</button>
       </div>
 
       {/* Category tabs */}

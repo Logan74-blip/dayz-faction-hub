@@ -67,7 +67,11 @@ export default function Settings({ session }) {
     generateInvite()
   }
 
-  function getInviteUrl() { return `${window.location.origin}/invite/${invite?.code}` }
+  function getInviteUrl() {
+  const base = window.location.origin
+  return `${base}/invite/${invite?.code}`
+}
+
 
   async function copyInvite() {
     await navigator.clipboard.writeText(getInviteUrl())
