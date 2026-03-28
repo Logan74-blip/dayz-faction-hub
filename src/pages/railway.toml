@@ -1,6 +1,8 @@
 [build]
 builder = "nixpacks"
+buildCommand = "npm ci"
 
 [deploy]
 startCommand = "node bot.js"
 restartPolicyType = "always"
+restartPolicyMaxRetries = 10
