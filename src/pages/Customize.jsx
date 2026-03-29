@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { useRole } from '../hooks/useRole'
 
-// DayZ faction flags — using emoji flags + DayZ themed options
 const DAYZ_FLAGS = [
   { id:'none', label:'None', emoji:'' },
   { id:'skull', label:'Skull', emoji:'💀' },
@@ -27,7 +26,7 @@ const DAYZ_FLAGS = [
   { id:'military', label:'Military', emoji:'🪖' },
   { id:'flag', label:'Flag', emoji:'🚩' },
   { id:'blood', label:'Blood Drop', emoji:'🩸' },
-  { id:'radiation', label:'Radiation', emoji:'☢' },
+  { id:'radiation', label:'Radiation', emoji:'☢️' },
   { id:'virus', label:'Virus', emoji:'🦠' },
 ]
 
@@ -44,7 +43,7 @@ const PRESET_COLORS = [
 
 export default function Customize({ session }) {
   const { role, faction } = useRole(session.user.id)
-  const [customization, setCustomization] = useState({ primary_color:'#4ade80', secondary_color:'#16a34a', flag:'none', theme:'default' })
+  const [customization, setCustomization] = useState({ primary_color:'#4ade80', secondary_color:'#16a34a', flag:'none' })
   const [saved, setSaved] = useState(false)
   const [apiKeys, setApiKeys] = useState([])
   const [newKeyLabel, setNewKeyLabel] = useState('')
@@ -52,15 +51,37 @@ export default function Customize({ session }) {
   const userId = session.user.id
   const canEdit = role === 'leader' || role === 'co-leader'
 
-  useEffect(() => { if (faction) { loadCustomization(); loadApiKeys(); checkPush() } }, [faction])
+  useEffect(() => {
+    if (faction) {
+      loadCustomization()
+      loadApiKeys()
+      checkPush()
+    }
+  }, [faction?.id])
 
   async function loadCustomization() {
-    const { data } = await supabase.from('faction_customization').select('*').eq('faction_id', faction.id).maybeSingle()
+    const { data } = await supabase
+      .from('faction_customization')
+      .select('*')
+      .eq('faction_id', faction.id)
+      .maybeSingle()
     if (data) setCustomization(data)
+    else {
+      // Load from factions table directly
+      setCustomization(c => ({
+        ...c,
+        primary_color: faction.primary_color || '#4ade80',
+        flag: faction.flag || 'none'
+      }))
+    }
   }
 
   async function loadApiKeys() {
-    const { data } = await supabase.from('api_keys').select('*').eq('faction_id', faction.id).order('created_at', { ascending: false })
+    const { data } = await supabase
+      .from('api_keys')
+      .select('*')
+      .eq('faction_id', faction.id)
+      .order('created_at', { ascending: false })
     setApiKeys(data || [])
   }
 
@@ -69,37 +90,69 @@ export default function Customize({ session }) {
   }
 
   async function saveCustomization() {
-    const { data: existing } = await supabase.from('faction_customization').select('id').eq('faction_id', faction.id).maybeSingle()
+    // Get the actual emoji to store
+    const selectedFlag = DAYZ_FLAGS.find(f => f.id === (customization.flag || 'none'))
+    const flagEmoji = selectedFlag?.emoji || ''
+
+    const { data: existing } = await supabase
+      .from('faction_customization')
+      .select('id')
+      .eq('faction_id', faction.id)
+      .maybeSingle()
+
     if (existing) {
-      await supabase.from('faction_customization').update({ ...customization, updated_at: new Date().toISOString() }).eq('faction_id', faction.id)
+      await supabase.from('faction_customization').update({
+        ...customization,
+        updated_at: new Date().toISOString()
+      }).eq('faction_id', faction.id)
     } else {
-      await supabase.from('faction_customization').insert({ ...customization, faction_id: faction.id })
+      await supabase.from('faction_customization').insert({
+        ...customization,
+        faction_id: faction.id
+      })
     }
-    // Update faction primary color and flag
-    await supabase.from('factions').update({ primary_color: customization.primary_color, flag: customization.flag }).eq('id', faction.id)
+
+    // Store EMOJI in factions table, not the ID
+    await supabase.from('factions').update({
+      primary_color: customization.primary_color,
+      flag: flagEmoji
+    }).eq('id', faction.id)
+
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
 
   async function enablePushNotifications() {
-    if (!('Notification' in window)) { alert('Push notifications not supported in this browser.'); return }
+    if (!('Notification' in window)) {
+      alert('Push notifications not supported in this browser.')
+      return
+    }
     const permission = await Notification.requestPermission()
     if (permission === 'granted') {
       setPushEnabled(true)
-      // Show test notification
       new Notification('☢️ Faction Hub', {
-        body: 'Push notifications enabled! You\'ll be alerted for raids, messages and more.',
+        body: 'Push notifications enabled!',
         icon: '/favicon.svg'
       })
-      await supabase.from('push_subscriptions').upsert({ user_id: userId, subscription: { enabled: true, granted_at: new Date().toISOString() } }, { onConflict: 'user_id' })
+      await supabase.from('push_subscriptions').upsert({
+        user_id: userId,
+        subscription: { enabled: true, granted_at: new Date().toISOString() }
+      }, { onConflict: 'user_id' })
     }
   }
 
   async function generateApiKey() {
     if (!faction) return
     const label = newKeyLabel.trim() || 'API Key'
-    const { data, error } = await supabase.from('api_keys').insert({ faction_id: faction.id, created_by: userId, label }).select().single()
-    if (!error) { setApiKeys(k => [data, ...k]); setNewKeyLabel('') }
+    const { data, error } = await supabase
+      .from('api_keys')
+      .insert({ faction_id: faction.id, created_by: userId, label })
+      .select()
+      .single()
+    if (!error) {
+      setApiKeys(k => [data, ...k])
+      setNewKeyLabel('')
+    }
   }
 
   async function deleteApiKey(id) {
@@ -108,11 +161,25 @@ export default function Customize({ session }) {
   }
 
   async function copyKey(key) {
-    await navigator.clipboard.writeText(key)
-    alert('API key copied!')
+    try {
+      await navigator.clipboard.writeText(key)
+      alert('API key copied!')
+    } catch {
+      alert('Key: ' + key)
+    }
   }
 
-  const selectedFlag = DAYZ_FLAGS.find(f => f.id === (customization.flag || 'none')) || DAYZ_FLAGS[0]
+  // Find selected flag — check both by ID and by emoji value
+  const selectedFlag = DAYZ_FLAGS.find(f =>
+    f.id === (customization.flag || 'none') ||
+    f.emoji === customization.flag
+  ) || DAYZ_FLAGS[0]
+
+  if (!faction) return (
+    <div style={{ padding:'80px', textAlign:'center', color:'var(--muted)' }}>
+      Join or create a faction to access customization.
+    </div>
+  )
 
   return (
     <div style={{ maxWidth:800, margin:'40px auto', padding:'0 24px', display:'flex', flexDirection:'column', gap:'24px' }}>
@@ -122,14 +189,16 @@ export default function Customize({ session }) {
       </div>
 
       {/* Preview */}
-      <div className="card" style={{ display:'flex', alignItems:'center', gap:'20px', borderColor: customization.primary_color, borderWidth:'2px' }}>
-        <div style={{ fontSize:'48px' }}>{selectedFlag.emoji || '☢️'}</div>
+      <div className="card" style={{ display:'flex', alignItems:'center', gap:'20px', borderColor:customization.primary_color, borderWidth:'2px' }}>
+        <div style={{ fontSize:'52px' }}>{selectedFlag.emoji || '☢️'}</div>
         <div>
-          <div style={{ fontFamily:'Share Tech Mono', fontSize:'22px', color: customization.primary_color }}>{faction?.name || 'YOUR FACTION'}</div>
+          <div style={{ fontFamily:'Share Tech Mono', fontSize:'22px', color:customization.primary_color }}>
+            {faction?.name || 'YOUR FACTION'}
+          </div>
           <div style={{ fontSize:'13px', color:'var(--muted)', marginTop:'4px' }}>Preview of your faction's appearance</div>
           <div style={{ display:'flex', gap:'8px', marginTop:'8px' }}>
-            <div style={{ width:'24px', height:'24px', borderRadius:'4px', background: customization.primary_color }} />
-            <div style={{ width:'24px', height:'24px', borderRadius:'4px', background: customization.secondary_color }} />
+            <div style={{ width:'24px', height:'24px', borderRadius:'4px', background:customization.primary_color }} />
+            <div style={{ width:'24px', height:'24px', borderRadius:'4px', background:customization.secondary_color }} />
           </div>
         </div>
       </div>
@@ -141,14 +210,18 @@ export default function Customize({ session }) {
             <h3 style={{ fontWeight:700, fontSize:'15px' }}>🎨 Faction Colors</h3>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(160px, 1fr))', gap:'8px' }}>
               {PRESET_COLORS.map(p => (
-                <button key={p.label} onClick={() => setCustomization(c => ({...c, primary_color: p.primary, secondary_color: p.secondary}))}
+                <button key={p.label}
+                  onClick={() => setCustomization(c => ({...c, primary_color:p.primary, secondary_color:p.secondary}))}
                   style={{
-                    background:'var(--surface)', border:`2px solid ${customization.primary_color === p.primary ? p.primary : 'var(--border)'}`,
-                    borderRadius:'6px', padding:'10px', cursor:'pointer', display:'flex', alignItems:'center', gap:'10px'
-                  }}>
+                    background:'var(--surface)',
+                    border:`2px solid ${customization.primary_color === p.primary ? p.primary : 'var(--border)'}`,
+                    borderRadius:'6px', padding:'10px', cursor:'pointer',
+                    display:'flex', alignItems:'center', gap:'10px'
+                  }}
+                >
                   <div style={{ display:'flex', gap:'4px' }}>
-                    <div style={{ width:'16px', height:'16px', borderRadius:'3px', background: p.primary }} />
-                    <div style={{ width:'16px', height:'16px', borderRadius:'3px', background: p.secondary }} />
+                    <div style={{ width:'16px', height:'16px', borderRadius:'3px', background:p.primary }} />
+                    <div style={{ width:'16px', height:'16px', borderRadius:'3px', background:p.secondary }} />
                   </div>
                   <span style={{ fontSize:'12px', color:'var(--text)', fontWeight:600 }}>{p.label}</span>
                 </button>
@@ -178,12 +251,16 @@ export default function Customize({ session }) {
             <p style={{ fontSize:'13px', color:'var(--muted)' }}>Choose an emblem that represents your faction</p>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(80px, 1fr))', gap:'8px' }}>
               {DAYZ_FLAGS.map(flag => (
-                <button key={flag.id} onClick={() => setCustomization(c => ({...c, flag: flag.id}))}
+                <button key={flag.id}
+                  onClick={() => setCustomization(c => ({...c, flag:flag.id}))}
                   style={{
-                    background:'var(--surface)', border:`2px solid ${customization.flag === flag.id ? customization.primary_color : 'var(--border)'}`,
-                    borderRadius:'8px', padding:'10px 6px', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:'4px',
+                    background:'var(--surface)',
+                    border:`2px solid ${(customization.flag === flag.id || customization.flag === flag.emoji) ? customization.primary_color : 'var(--border)'}`,
+                    borderRadius:'8px', padding:'10px 6px', cursor:'pointer',
+                    display:'flex', flexDirection:'column', alignItems:'center', gap:'4px',
                     transition:'border-color 0.15s'
-                  }}>
+                  }}
+                >
                   <span style={{ fontSize:'24px' }}>{flag.emoji || '○'}</span>
                   <span style={{ fontSize:'10px', color:'var(--muted)' }}>{flag.label}</span>
                 </button>
@@ -191,7 +268,11 @@ export default function Customize({ session }) {
             </div>
           </div>
 
-          <button className="btn btn-green" style={{ alignSelf:'flex-start', fontSize:'15px', padding:'10px 24px' }} onClick={saveCustomization}>
+          <button
+            className="btn btn-green"
+            style={{ alignSelf:'flex-start', fontSize:'15px', padding:'10px 24px' }}
+            onClick={saveCustomization}
+          >
             {saved ? '✓ Saved!' : 'Save Customization'}
           </button>
         </>
@@ -200,11 +281,11 @@ export default function Customize({ session }) {
       {/* Push Notifications */}
       <div className="card" style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
         <h3 style={{ fontWeight:700, fontSize:'15px' }}>🔔 Push Notifications</h3>
-        <p style={{ fontSize:'13px', color:'var(--muted)' }}>Get browser alerts for raids, messages, bounties and announcements even when the tab is in the background.</p>
+        <p style={{ fontSize:'13px', color:'var(--muted)' }}>
+          Get browser alerts for raids, messages, bounties and announcements even when the tab is in the background.
+        </p>
         {pushEnabled ? (
-          <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-            <span style={{ color:'var(--green)', fontSize:'14px' }}>✅ Push notifications are enabled</span>
-          </div>
+          <span style={{ color:'var(--green)', fontSize:'14px' }}>✅ Push notifications are enabled</span>
         ) : (
           <button className="btn btn-green" style={{ alignSelf:'flex-start' }} onClick={enablePushNotifications}>
             Enable Push Notifications
@@ -215,17 +296,20 @@ export default function Customize({ session }) {
       {/* API Keys */}
       {canEdit && (
         <div className="card" style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
-          <h3 style={{ fontWeight:700, fontSize:'15px' }}>🔑 Public API Access</h3>
+          <h3 style={{ fontWeight:700, fontSize:'15px' }}>🔑 API Access</h3>
           <p style={{ fontSize:'13px', color:'var(--muted)' }}>
-            Use these API keys to access your faction data from external tools, Discord bots, or scripts.
-            Base URL: <code style={{ background:'#0d1a0d', padding:'2px 6px', borderRadius:'3px', fontSize:'12px' }}>{window.location.origin}/api/faction/YOUR_FACTION_ID</code>
+            Use these keys to access your faction data from external tools and scripts.
           </p>
-
           <div style={{ display:'flex', gap:'8px' }}>
-            <input placeholder="Key label (e.g. Discord Bot)" value={newKeyLabel} onChange={e => setNewKeyLabel(e.target.value)} />
-            <button className="btn btn-green" style={{ whiteSpace:'nowrap' }} onClick={generateApiKey}>Generate Key</button>
+            <input
+              placeholder="Key label (e.g. Discord Bot)"
+              value={newKeyLabel}
+              onChange={e => setNewKeyLabel(e.target.value)}
+            />
+            <button className="btn btn-green" style={{ whiteSpace:'nowrap' }} onClick={generateApiKey}>
+              Generate Key
+            </button>
           </div>
-
           <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
             {apiKeys.length === 0 && <p style={{ fontSize:'13px', color:'var(--muted)' }}>No API keys yet.</p>}
             {apiKeys.map(k => (
@@ -235,7 +319,9 @@ export default function Customize({ session }) {
                   <div style={{ fontFamily:'Share Tech Mono', fontSize:'12px', color:'var(--green)', marginTop:'2px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                     {k.key}
                   </div>
-                  <div style={{ fontSize:'11px', color:'var(--muted)', marginTop:'2px' }}>Created {new Date(k.created_at).toLocaleDateString()}</div>
+                  <div style={{ fontSize:'11px', color:'var(--muted)', marginTop:'2px' }}>
+                    Created {new Date(k.created_at).toLocaleDateString()}
+                  </div>
                 </div>
                 <div style={{ display:'flex', gap:'6px', flexShrink:0 }}>
                   <button className="btn btn-ghost" style={{ fontSize:'12px', padding:'4px 10px' }} onClick={() => copyKey(k.key)}>Copy</button>
@@ -244,30 +330,6 @@ export default function Customize({ session }) {
               </div>
             ))}
           </div>
-
-          {/* API Documentation */}
-          {apiKeys.length > 0 && (
-            <div style={{ background:'#0d1a0d', border:'1px solid var(--border)', borderRadius:'6px', padding:'14px' }}>
-              <h4 style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'13px', marginBottom:'10px' }}>📚 API ENDPOINTS</h4>
-              {[
-                { method:'GET', path:'/api/faction/:id', desc:'Faction info, stats, members' },
-                { method:'GET', path:'/api/faction/:id/raids', desc:'Upcoming and past raids' },
-                { method:'GET', path:'/api/faction/:id/bounties', desc:'Active bounties' },
-                { method:'GET', path:'/api/faction/:id/treasury', desc:'Treasury balance' },
-                { method:'GET', path:'/api/faction/:id/diplomacy', desc:'Active pacts and wars' },
-                { method:'GET', path:'/api/faction/:id/members', desc:'Member list with roles' },
-              ].map(e => (
-                <div key={e.path} style={{ display:'flex', gap:'10px', padding:'6px 0', borderBottom:'1px solid var(--border)', fontSize:'12px' }}>
-                  <span style={{ color:'var(--green)', fontFamily:'Share Tech Mono', minWidth:'36px' }}>{e.method}</span>
-                  <span style={{ fontFamily:'Share Tech Mono', color:'var(--text)', minWidth:'220px' }}>{e.path}</span>
-                  <span style={{ color:'var(--muted)' }}>{e.desc}</span>
-                </div>
-              ))}
-              <p style={{ fontSize:'12px', color:'var(--muted)', marginTop:'10px' }}>
-                Add header: <code style={{ background:'#111812', padding:'2px 6px', borderRadius:'3px' }}>X-API-Key: your-key-here</code>
-              </p>
-            </div>
-          )}
         </div>
       )}
     </div>
