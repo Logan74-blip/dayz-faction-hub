@@ -42,14 +42,15 @@ const NAV_GROUPS = [
   ]
 },
   {
-    label:'Community', icon:Globe,
-    children:[
-      { to:'/directory', label:'Directory', icon:Globe },
-      { to:'/leaderboard', label:'Leaderboard', icon:Trophy },
-      { to:'/join-requests', label:'Join Requests', icon:UserPlus },
-      { to:'/achievements', label:'Achievements', icon:Star },
-    ]
-  },
+  label:'Community', icon:Globe,
+  children:[
+    { to:'/directory', label:'Directory', icon:Globe },
+    { to:'/leaderboard', label:'Leaderboard', icon:Trophy },
+    { to:'/join-requests', label:'Join Requests', icon:UserPlus },
+    { to:'/achievements', label:'Achievements', icon:Star },
+    { to:'/dead-factions', label:'Dead Factions', icon:Skull },
+  ]
+},
   {
     label:'Settings', icon:Settings,
     children:[
