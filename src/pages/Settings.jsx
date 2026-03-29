@@ -249,9 +249,26 @@ async function deleteFaction() {
   window.location.href = '/'
 }
   async function changeRole(memberId, newRole) {
+  if (newRole === 'leader') {
+    if (!window.confirm('Transfer leadership? You will become Co-Leader and this member will become the new Leader.')) return
+    // Demote current leader to co-leader
+    await supabase.from('faction_members').update({ role: 'co-leader' }).eq('faction_id', faction.id).eq('user_id', userId)
+    // Promote selected member to leader
+    await supabase.from('faction_members').update({ role: 'leader' }).eq('id', memberId)
+    await supabase.from('events').insert({
+      faction_id: faction.id,
+      created_by: userId,
+      type: 'member',
+      title: '👑 Leadership Transferred',
+      description: 'Faction leadership has been transferred to a new leader'
+    })
+    await reload()
+    loadMembers()
+  } else {
     await supabase.from('faction_members').update({ role: newRole }).eq('id', memberId)
     loadMembers()
   }
+}
 
   const communityServers = existingServers.filter(s => !OFFICIAL_SERVERS.includes(s))
 

@@ -1,70 +1,59 @@
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../supabaseClient'
-import { LayoutDashboard, Map, Sword, ShoppingBag, Shield, Globe, Settings, Bell, LogOut, ChevronDown, Flame, MessageSquare, Network, Calendar, Trophy, Swords, UserPlus, Star, Coins, Package, Target, Megaphone, Activity, Palette } from 'lucide-react'
+import { LayoutDashboard, Map, Sword, ShoppingBag, Shield, Globe, Settings, Bell, LogOut, ChevronDown, Flame, MessageSquare, Network, Calendar, Trophy, Swords, UserPlus, Star, Coins, Package, Target, Megaphone, Activity, Palette, Menu, X } from 'lucide-react'
 
 const NAV_GROUPS = [
+  { label:'Home', icon:LayoutDashboard, to:'/', single:true },
   {
-    label: 'Home',
-    icon: LayoutDashboard,
-    to: '/',
-    single: true
-  },
-  {
-    label: 'Operations',
-    icon: Sword,
-    children: [
-      { to: '/raids', label: 'Raids', icon: Sword },
-      { to: '/warroom', label: 'War Room', icon: Flame },
-      { to: '/bounties', label: 'Bounties', icon: Target },
-      { to: '/map', label: 'War Map', icon: Map },
-      { to: '/versus', label: 'F vs F', icon: Swords },
+    label:'Operations', icon:Sword,
+    children:[
+      { to:'/raids', label:'Raids', icon:Sword },
+      { to:'/warroom', label:'War Room', icon:Flame },
+      { to:'/bounties', label:'Bounties', icon:Target },
+      { to:'/map', label:'War Map', icon:Map },
+      { to:'/versus', label:'F vs F', icon:Swords },
     ]
   },
   {
-    label: 'Economy',
-    icon: ShoppingBag,
-    children: [
-      { to: '/trading', label: 'Trading Post', icon: ShoppingBag },
-      { to: '/treasury', label: 'Treasury', icon: Coins },
-      { to: '/resources', label: 'Resources', icon: Package },
+    label:'Economy', icon:ShoppingBag,
+    children:[
+      { to:'/trading', label:'Trading Post', icon:ShoppingBag },
+      { to:'/treasury', label:'Treasury', icon:Coins },
+      { to:'/resources', label:'Resources', icon:Package },
     ]
   },
   {
-    label: 'Diplomacy',
-    icon: Shield,
-    children: [
-      { to: '/diplomacy', label: 'Diplomacy Board', icon: Shield },
-      { to: '/messages', label: 'Messages', icon: MessageSquare },
-      { to: '/alliance-network', label: 'Alliance Network', icon: Network },
+    label:'Diplomacy', icon:Shield,
+    children:[
+      { to:'/diplomacy', label:'Diplomacy Board', icon:Shield },
+      { to:'/messages', label:'Messages', icon:MessageSquare },
+      { to:'/alliance-network', label:'Alliance Network', icon:Network },
     ]
   },
   {
-    label: 'Intel',
-    icon: Activity,
-    children: [
-      { to: '/announcements', label: 'Announcements', icon: Megaphone },
-      { to: '/eventlog', label: 'Event Log', icon: Activity },
-      { to: '/server-calendar', label: 'Server Events', icon: Calendar },
+    label:'Intel', icon:Activity,
+    children:[
+      { to:'/announcements', label:'Announcements', icon:Megaphone },
+      { to:'/eventlog', label:'Event Log', icon:Activity },
+      { to:'/server-calendar', label:'Server Events', icon:Calendar },
     ]
   },
   {
-    label: 'Community',
-    icon: Globe,
-    children: [
-      { to: '/directory', label: 'Directory', icon: Globe },
-      { to: '/leaderboard', label: 'Leaderboard', icon: Trophy },
-      { to: '/join-requests', label: 'Join Requests', icon: UserPlus },
-      { to: '/achievements', label: 'Achievements', icon: Star },
+    label:'Community', icon:Globe,
+    children:[
+      { to:'/directory', label:'Directory', icon:Globe },
+      { to:'/leaderboard', label:'Leaderboard', icon:Trophy },
+      { to:'/join-requests', label:'Join Requests', icon:UserPlus },
+      { to:'/achievements', label:'Achievements', icon:Star },
     ]
   },
   {
-    label: 'Settings',
-    icon: Settings,
-    children: [
-      { to: '/settings', label: 'Faction Settings', icon: Settings },
-      { to: '/customize', label: 'Customize', icon: Palette },
-      { to: '/admin', label: 'Admin Dashboard', icon: Shield },
+    label:'Settings', icon:Settings,
+    children:[
+      { to:'/settings', label:'Faction Settings', icon:Settings },
+      { to:'/customize', label:'Customize', icon:Palette },
+      { to:'/admin', label:'Admin Dashboard', icon:Shield },
     ]
   },
 ]
@@ -78,6 +67,8 @@ export default function Navbar({ session }) {
   const [showBell, setShowBell] = useState(false)
   const [openGroup, setOpenGroup] = useState(null)
   const [unreadMessages, setUnreadMessages] = useState(0)
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [mobileExpanded, setMobileExpanded] = useState(null)
   const bellRef = useRef(null)
   const navRef = useRef(null)
   const userId = session.user.id
@@ -87,7 +78,7 @@ export default function Navbar({ session }) {
     loadUnreadMessages()
     saveProfile()
     const channel = supabase.channel('notif_' + userId)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
+      .on('postgres_changes', { event:'INSERT', schema:'public', table:'notifications', filter:`user_id=eq.${userId}` },
         payload => setNotifications(n => [payload.new, ...n])
       ).subscribe()
     return () => supabase.removeChannel(channel)
@@ -104,8 +95,7 @@ export default function Navbar({ session }) {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  // Close dropdown on route change
-  useEffect(() => { setOpenGroup(null) }, [location])
+  useEffect(() => { setOpenGroup(null); setMobileOpen(false) }, [location])
 
   async function saveProfile() {
     const meta = session.user.user_metadata
@@ -114,11 +104,11 @@ export default function Navbar({ session }) {
       discord_username: meta?.full_name || meta?.name || meta?.user_name || 'Unknown',
       discord_avatar: meta?.avatar_url || null,
       updated_at: new Date().toISOString()
-    }, { onConflict: 'id' })
+    }, { onConflict:'id' })
   }
 
   async function loadNotifications() {
-    const { data } = await supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(20)
+    const { data } = await supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending:false }).limit(20)
     setNotifications(data || [])
   }
 
@@ -130,13 +120,13 @@ export default function Navbar({ session }) {
   }
 
   async function markRead(id) {
-    await supabase.from('notifications').update({ read: true }).eq('id', id)
-    setNotifications(n => n.map(x => x.id === id ? {...x, read: true} : x))
+    await supabase.from('notifications').update({ read:true }).eq('id', id)
+    setNotifications(n => n.map(x => x.id === id ? {...x, read:true} : x))
   }
 
   async function markAllRead() {
-    await supabase.from('notifications').update({ read: true }).eq('user_id', userId).eq('read', false)
-    setNotifications(n => n.map(x => ({...x, read: true})))
+    await supabase.from('notifications').update({ read:true }).eq('user_id', userId).eq('read', false)
+    setNotifications(n => n.map(x => ({...x, read:true})))
   }
 
   async function logout() {
@@ -155,17 +145,17 @@ export default function Navbar({ session }) {
   return (
     <>
       <nav ref={navRef} style={{
-        background: 'var(--surface)', borderBottom: '1px solid var(--border)',
-        display: 'flex', alignItems: 'center', padding: '0 16px',
-        height: '56px', position: 'sticky', top: 0, zIndex: 100, gap: '2px'
+        background:'var(--surface)', borderBottom:'1px solid var(--border)',
+        display:'flex', alignItems:'center', padding:'0 16px',
+        height:'56px', position:'sticky', top:0, zIndex:100, gap:'4px'
       }}>
         {/* Logo */}
-        <span onClick={() => navigate('/')} style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'15px', marginRight:'12px', letterSpacing:'0.1em', whiteSpace:'nowrap', cursor:'pointer', flexShrink:0 }}>
-          ☢ FACTION HUB
+        <span onClick={() => navigate('/')} style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'15px', marginRight:'8px', letterSpacing:'0.1em', whiteSpace:'nowrap', cursor:'pointer', flexShrink:0 }}>
+          ☢️ FACTION HUB
         </span>
 
-        {/* Nav groups */}
-        <div style={{ display:'flex', gap:'2px', flex:1 }}>
+        {/* Desktop nav groups */}
+        <div className="desktop-nav-groups" style={{ display:'flex', gap:'2px', flex:1, overflow:'hidden' }}>
           {NAV_GROUPS.map(group => {
             const active = isGroupActive(group)
             const Icon = group.icon
@@ -196,9 +186,7 @@ export default function Navbar({ session }) {
                   <Icon size={13} />
                   {group.label}
                   {group.label === 'Diplomacy' && unreadMessages > 0 && (
-                    <span style={{ background:'var(--red)', color:'#fff', borderRadius:'999px', fontSize:'9px', padding:'1px 5px', fontWeight:700 }}>
-                      {unreadMessages}
-                    </span>
+                    <span style={{ background:'var(--red)', color:'#fff', borderRadius:'999px', fontSize:'9px', padding:'1px 5px', fontWeight:700 }}>{unreadMessages}</span>
                   )}
                   <ChevronDown size={11} style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition:'transform 0.15s' }} />
                 </button>
@@ -217,17 +205,14 @@ export default function Navbar({ session }) {
                         borderRadius:'6px', fontSize:'13px', fontWeight:600, textDecoration:'none',
                         color: isActive ? 'var(--green)' : 'var(--text)',
                         background: isActive ? '#14532d33' : 'transparent',
-                        transition:'background 0.1s'
                       })}
-                        onMouseEnter={e => { if (!e.currentTarget.classList.contains('active')) e.currentTarget.style.background = '#1a2e1a' }}
+                        onMouseEnter={e => e.currentTarget.style.background = '#1a2e1a'}
                         onMouseLeave={e => e.currentTarget.style.background = ''}
                       >
                         <CIcon size={14} />
                         {label}
                         {label === 'Messages' && unreadMessages > 0 && (
-                          <span style={{ background:'var(--red)', color:'#fff', borderRadius:'999px', fontSize:'9px', padding:'1px 5px', marginLeft:'auto' }}>
-                            {unreadMessages}
-                          </span>
+                          <span style={{ background:'var(--red)', color:'#fff', borderRadius:'999px', fontSize:'9px', padding:'1px 5px', marginLeft:'auto' }}>{unreadMessages}</span>
                         )}
                       </NavLink>
                     ))}
@@ -239,7 +224,7 @@ export default function Navbar({ session }) {
         </div>
 
         {/* Right side */}
-        <div style={{ display:'flex', alignItems:'center', gap:'8px', flexShrink:0, marginLeft:'8px' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:'8px', flexShrink:0, marginLeft:'auto' }}>
           {/* Bell */}
           <div ref={bellRef} style={{ position:'relative' }}>
             <button onClick={() => { setShowBell(s => !s); setOpenGroup(null) }} style={{
@@ -269,9 +254,7 @@ export default function Navbar({ session }) {
                   {unread > 0 && <button onClick={markAllRead} style={{ background:'transparent', border:'none', color:'var(--muted)', cursor:'pointer', fontSize:'11px' }}>Mark all read</button>}
                 </div>
                 <div style={{ overflowY:'auto', flex:1 }}>
-                  {notifications.length === 0 && (
-                    <p style={{ padding:'20px', textAlign:'center', color:'var(--muted)', fontSize:'13px' }}>No notifications yet</p>
-                  )}
+                  {notifications.length === 0 && <p style={{ padding:'20px', textAlign:'center', color:'var(--muted)', fontSize:'13px' }}>No notifications yet</p>}
                   {notifications.map(n => (
                     <div key={n.id} onClick={() => markRead(n.id)} style={{
                       padding:'10px 14px', borderBottom:'1px solid var(--border)', cursor:'pointer',
@@ -292,13 +275,125 @@ export default function Navbar({ session }) {
             )}
           </div>
 
-          {avatar && <img src={avatar} style={{ width:26, height:26, borderRadius:'50%', border:'1px solid var(--border)', flexShrink:0 }} />}
-          <span style={{ fontSize:'11px', color:'var(--muted)', whiteSpace:'nowrap', maxWidth:'80px', overflow:'hidden', textOverflow:'ellipsis' }}>{name}</span>
+          {/* Avatar — hide on very small screens */}
+          {avatar && <img src={avatar} style={{ width:26, height:26, borderRadius:'50%', border:'1px solid var(--border)', flexShrink:0 }} className="hide-mobile" />}
+
+          {/* Logout — hide text on mobile */}
           <button onClick={logout} className="btn btn-ghost" style={{ display:'flex', alignItems:'center', gap:'4px', fontSize:'11px', padding:'4px 8px', flexShrink:0 }}>
-            <LogOut size={12} /> Out
+            <LogOut size={12} /> <span className="hide-mobile">Out</span>
+          </button>
+
+          {/* Hamburger — mobile only */}
+          <button className="mobile-menu-btn" onClick={() => setMobileOpen(true)} style={{ display:'none' }}>
+            <Menu size={22} />
           </button>
         </div>
       </nav>
+
+      {/* Mobile drawer overlay */}
+      {mobileOpen && (
+        <div
+          style={{ position:'fixed', inset:0, background:'#00000088', zIndex:150 }}
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* Mobile drawer */}
+      {mobileOpen && (
+        <div style={{
+          position:'fixed', top:0, left:0, bottom:0, width:'280px',
+          background:'var(--surface)', borderRight:'1px solid var(--border)',
+          zIndex:200, overflowY:'auto', display:'flex', flexDirection:'column'
+        }}>
+          {/* Drawer header */}
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px', borderBottom:'1px solid var(--border)' }}>
+            <span style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'15px' }}>☢️ FACTION HUB</span>
+            <button onClick={() => setMobileOpen(false)} style={{ background:'transparent', border:'none', color:'var(--muted)', cursor:'pointer', padding:'4px' }}>
+              <X size={18} />
+            </button>
+          </div>
+
+          {/* User info */}
+          <div style={{ display:'flex', alignItems:'center', gap:'10px', padding:'12px 16px', borderBottom:'1px solid var(--border)' }}>
+            {avatar && <img src={avatar} style={{ width:32, height:32, borderRadius:'50%', border:'1px solid var(--border)' }} />}
+            <span style={{ fontSize:'13px', fontWeight:600, color:'var(--text)' }}>{name}</span>
+          </div>
+
+          {/* Nav items */}
+          <div style={{ flex:1, padding:'8px 0' }}>
+            {NAV_GROUPS.map(group => {
+              const Icon = group.icon
+              const isExpanded = mobileExpanded === group.label
+
+              if (group.single) {
+                return (
+                  <NavLink key={group.to} to={group.to} end
+                    style={({ isActive }) => ({
+                      display:'flex', alignItems:'center', gap:'12px',
+                      padding:'12px 16px', textDecoration:'none', fontSize:'15px', fontWeight:600,
+                      color: isActive ? 'var(--green)' : 'var(--text)',
+                      background: isActive ? '#14532d33' : 'transparent',
+                      borderLeft: isActive ? '3px solid var(--green)' : '3px solid transparent'
+                    })}
+                  >
+                    <Icon size={16} /> {group.label}
+                  </NavLink>
+                )
+              }
+
+              return (
+                <div key={group.label}>
+                  <button
+                    onClick={() => setMobileExpanded(isExpanded ? null : group.label)}
+                    style={{
+                      display:'flex', alignItems:'center', gap:'12px', width:'100%',
+                      padding:'12px 16px', background:'transparent', border:'none',
+                      color:'var(--text)', fontSize:'15px', fontWeight:600, cursor:'pointer',
+                      borderLeft:'3px solid transparent'
+                    }}
+                  >
+                    <Icon size={16} />
+                    <span style={{ flex:1, textAlign:'left' }}>{group.label}</span>
+                    {group.label === 'Diplomacy' && unreadMessages > 0 && (
+                      <span style={{ background:'var(--red)', color:'#fff', borderRadius:'999px', fontSize:'10px', padding:'1px 6px' }}>{unreadMessages}</span>
+                    )}
+                    <ChevronDown size={14} style={{ transform: isExpanded ? 'rotate(180deg)' : 'none', transition:'transform 0.2s' }} />
+                  </button>
+
+                  {isExpanded && (
+                    <div style={{ background:'#0a0c0a', borderTop:'1px solid var(--border)', borderBottom:'1px solid var(--border)' }}>
+                      {group.children.map(({ to, label, icon: CIcon }) => (
+                        <NavLink key={to} to={to}
+                          style={({ isActive }) => ({
+                            display:'flex', alignItems:'center', gap:'12px',
+                            padding:'10px 16px 10px 40px', textDecoration:'none',
+                            fontSize:'14px', fontWeight:600,
+                            color: isActive ? 'var(--green)' : 'var(--muted)',
+                            background: isActive ? '#14532d22' : 'transparent',
+                          })}
+                        >
+                          <CIcon size={14} />
+                          {label}
+                          {label === 'Messages' && unreadMessages > 0 && (
+                            <span style={{ background:'var(--red)', color:'#fff', borderRadius:'999px', fontSize:'9px', padding:'1px 5px', marginLeft:'auto' }}>{unreadMessages}</span>
+                          )}
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Logout */}
+          <div style={{ padding:'16px', borderTop:'1px solid var(--border)' }}>
+            <button onClick={logout} className="btn btn-ghost" style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px' }}>
+              <LogOut size={14} /> Sign Out
+            </button>
+          </div>
+        </div>
+      )}
     </>
   )
 }
