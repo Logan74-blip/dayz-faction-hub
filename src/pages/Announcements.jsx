@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { useRole } from '../hooks/useRole'
-import { Plus, Pin, Trash2 } from 'lucide-react'
+import { Plus, Pin, Trash2, AlertTriangle } from 'lucide-react'
 import { sendWebhookNotification } from './Settings'
 
 export default function Announcements({ session }) {
   const { role, faction } = useRole(session.user.id)
   const [announcements, setAnnouncements] = useState([])
   const [showForm, setShowForm] = useState(false)
+  const [showClearModal, setShowClearModal] = useState(false)
   const [form, setForm] = useState({ title:'', body:'', pinned:false })
   const [loading, setLoading] = useState(true)
   const userId = session.user.id
@@ -43,16 +44,12 @@ export default function Announcements({ session }) {
       )
       setForm({ title:'', body:'', pinned:false })
       setShowForm(false)
-
-      // Log to event feed
       await supabase.from('events').insert({
         faction_id: faction.id, created_by: userId,
         type: 'announcement',
         title: `📣 Announcement: ${form.title}`,
         description: form.body.slice(0, 100)
       })
-
-      // Notify all faction members
       const { data: members } = await supabase
         .from('faction_members')
         .select('user_id')
@@ -66,21 +63,31 @@ export default function Announcements({ session }) {
           body: form.body.slice(0, 80)
         })))
       }
-
-      // Send Discord webhook notification
       await sendWebhookNotification(
-        faction.id,
-        'announcement',
+        faction.id, 'announcement',
         `📣 ${form.pinned ? '📌 PINNED — ' : ''}${form.title}`,
-        [{ name: 'Message', value: form.body.slice(0, 1024) }],
+        [{ name:'Message', value:form.body.slice(0, 1024) }],
         0x4ade80
       )
     }
   }
 
   async function deleteAnnouncement(id) {
+    if (!window.confirm('Delete this announcement?')) return
     await supabase.from('announcements').delete().eq('id', id)
     setAnnouncements(a => a.filter(x => x.id !== id))
+  }
+
+  async function clearAllAnnouncements() {
+    if (!faction) return
+    await supabase.from('announcements').delete().eq('faction_id', faction.id)
+    await supabase.from('events').insert({
+      faction_id: faction.id, created_by: userId, type: 'announcement',
+      title: '🗑️ All Announcements Cleared',
+      description: 'Announcement history cleared by leadership'
+    })
+    setAnnouncements([])
+    setShowClearModal(false)
   }
 
   async function togglePin(id, pinned) {
@@ -98,24 +105,58 @@ export default function Announcements({ session }) {
   )
 
   if (loading) return (
-    <div style={{ padding:'80px', textAlign:'center', color:'var(--muted)', fontFamily:'Share Tech Mono' }}>
-      LOADING...
-    </div>
+    <div className="page-loading"><div className="spinner" /></div>
   )
 
   return (
     <div style={{ maxWidth:800, margin:'40px auto', padding:'0 24px', display:'flex', flexDirection:'column', gap:'24px' }}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:'12px' }}>
         <div>
           <h1 style={{ fontFamily:'Share Tech Mono', fontSize:'24px', color:'var(--green)' }}>ANNOUNCEMENTS</h1>
           <p style={{ color:'var(--muted)', marginTop:'4px' }}>Faction-wide messages from leadership</p>
         </div>
-        {canPost && (
-          <button className="btn btn-green" style={{ display:'flex', alignItems:'center', gap:'8px' }} onClick={() => setShowForm(f => !f)}>
-            <Plus size={15} /> Post Announcement
-          </button>
-        )}
+        <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+          {canPost && announcements.length > 0 && (
+            <button
+              className="btn btn-ghost"
+              style={{ fontSize:'13px', color:'var(--red)', display:'flex', alignItems:'center', gap:'6px' }}
+              onClick={() => setShowClearModal(true)}
+            >
+              <AlertTriangle size={13} /> Clear All
+            </button>
+          )}
+          {canPost && (
+            <button className="btn btn-green" style={{ display:'flex', alignItems:'center', gap:'8px' }} onClick={() => setShowForm(f => !f)}>
+              <Plus size={15} /> Post Announcement
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Clear Modal */}
+      {showClearModal && (
+        <div style={{ position:'fixed', inset:0, background:'#00000088', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:'24px' }} onClick={() => setShowClearModal(false)}>
+          <div className="card" style={{ maxWidth:'420px', width:'100%', display:'flex', flexDirection:'column', gap:'16px', borderColor:'var(--red)' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+              <AlertTriangle size={20} color="var(--red)" />
+              <h3 style={{ fontWeight:700, fontSize:'18px', color:'var(--red)' }}>Clear All Announcements</h3>
+            </div>
+            <p style={{ color:'var(--muted)', fontSize:'14px' }}>
+              This will permanently delete all <strong style={{ color:'var(--text)' }}>{announcements.length} announcements</strong>. This cannot be undone.
+            </p>
+            <div style={{ display:'flex', gap:'8px' }}>
+              <button
+                className="btn"
+                style={{ flex:1, background:'#b91c1c', color:'#fff', border:'none', fontWeight:700 }}
+                onClick={clearAllAnnouncements}
+              >
+                Yes, Clear Everything
+              </button>
+              <button className="btn btn-ghost" style={{ flex:1 }} onClick={() => setShowClearModal(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {!canPost && (
         <div className="card" style={{ background:'#1a1a0d', borderColor:'var(--yellow)', fontSize:'13px', color:'var(--muted)' }}>
@@ -141,20 +182,24 @@ export default function Announcements({ session }) {
 
       {announcements.length === 0 && (
         <div className="card" style={{ textAlign:'center', color:'var(--muted)', padding:'48px' }}>
-          No announcements yet. {canPost ? 'Click "Post Announcement" to create one.' : 'Leadership will post updates here.'}
+          No announcements yet.{canPost ? ' Click "Post Announcement" to create one.' : ' Leadership will post updates here.'}
         </div>
       )}
 
       {announcements.map(a => (
-        <div key={a.id} className="card" style={{ display:'flex', flexDirection:'column', gap:'10px', borderLeft: a.pinned ? '3px solid var(--green)' : '3px solid var(--border)' }}>
+        <div key={a.id} className="card" style={{
+          display:'flex', flexDirection:'column', gap:'10px',
+          borderLeft: a.pinned ? '3px solid var(--green)' : '3px solid var(--border)',
+          background: a.pinned ? '#0d1a0d' : 'var(--surface)'
+        }}>
           <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:'12px' }}>
-            <div style={{ display:'flex', alignItems:'center', gap:'10px', flex:1 }}>
-              {a.pinned && <Pin size={14} color="var(--green)" />}
+            <div style={{ display:'flex', alignItems:'center', gap:'10px', flex:1, minWidth:0 }}>
+              {a.pinned && <Pin size={14} color="var(--green)" style={{ flexShrink:0 }} />}
               <h3 style={{ fontSize:'17px', fontWeight:700, color: a.pinned ? 'var(--green)' : 'var(--text)' }}>{a.title}</h3>
             </div>
             {canPost && (
               <div style={{ display:'flex', gap:'6px', flexShrink:0 }}>
-                <button onClick={() => togglePin(a.id, a.pinned)} className="btn btn-ghost" style={{ padding:'4px 8px', fontSize:'11px' }}>
+                <button onClick={() => togglePin(a.id, a.pinned)} className="btn btn-ghost" style={{ padding:'4px 8px', fontSize:'11px', color: a.pinned ? 'var(--green)' : 'var(--muted)' }}>
                   {a.pinned ? 'Unpin' : '📌 Pin'}
                 </button>
                 <button onClick={() => deleteAnnouncement(a.id)} className="btn btn-ghost" style={{ padding:'4px 8px' }}>
@@ -163,8 +208,8 @@ export default function Announcements({ session }) {
               </div>
             )}
           </div>
-          <p style={{ fontSize:'14px', color:'var(--text)', lineHeight:1.6, whiteSpace:'pre-wrap' }}>{a.body}</p>
-          <div style={{ display:'flex', alignItems:'center', gap:'10px', fontSize:'12px', color:'var(--muted)' }}>
+          <p style={{ fontSize:'14px', color:'var(--text)', lineHeight:1.7, whiteSpace:'pre-wrap' }}>{a.body}</p>
+          <div style={{ display:'flex', alignItems:'center', gap:'10px', fontSize:'12px', color:'var(--muted)', paddingTop:'6px', borderTop:'1px solid var(--border)' }}>
             {a.profile?.discord_avatar && <img src={a.profile.discord_avatar} style={{ width:20, height:20, borderRadius:'50%' }} />}
             <span>{a.profile?.discord_username || 'Leadership'}</span>
             <span>•</span>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { useRole } from '../hooks/useRole'
-import { Plus, Trash2, MapPin, Calendar, Users } from 'lucide-react'
+import { Plus, Trash2, MapPin, Calendar, Users, AlertTriangle } from 'lucide-react'
 import { sendWebhookNotification } from './Settings'
 
 export default function Raids({ session }) {
@@ -10,6 +10,7 @@ export default function Raids({ session }) {
   const [rsvps, setRsvps] = useState({})
   const [templates, setTemplates] = useState([])
   const [showForm, setShowForm] = useState(false)
+  const [showClearModal, setShowClearModal] = useState(false)
   const [form, setForm] = useState({ title:'', target_location:'', scheduled_at:'', description:'' })
   const userId = session.user.id
   const canManage = role === 'leader' || role === 'co-leader'
@@ -60,7 +61,7 @@ export default function Raids({ session }) {
       notifyDiscord(faction.id, data)
       await supabase.from('events').insert({
         faction_id: faction.id, created_by: userId, type: 'raid',
-        title: `Raid Scheduled: ${data.title}`,
+        title: `⚔️ Raid Scheduled: ${data.title}`,
         description: `Target: ${data.target_location || 'TBD'} — ${new Date(data.scheduled_at).toLocaleString()}`
       })
       const { data: members } = await supabase.from('faction_members').select('user_id').eq('faction_id', faction.id).neq('user_id', userId)
@@ -88,56 +89,65 @@ export default function Raids({ session }) {
     setRaids(r => r.filter(x => x.id !== id))
   }
 
+  async function clearAllRaids() {
+    if (!faction) return
+    await supabase.from('raid_rsvps').delete().in('raid_id', raids.map(r => r.id))
+    await supabase.from('raids').delete().eq('faction_id', faction.id)
+    await supabase.from('events').insert({
+      faction_id: faction.id, created_by: userId, type: 'raid',
+      title: '🗑️ All Raids Cleared',
+      description: 'Raid history cleared by leadership'
+    })
+    setRaids([])
+    setRsvps({})
+    setShowClearModal(false)
+  }
+
   async function toggleRsvp(raidId) {
-  const existing = rsvps[raidId]?.find(r => r.user_id === userId)
-  if (existing) {
-    await supabase.from('raid_rsvps').delete().eq('id', existing.id)
-    setRsvps(r => ({ ...r, [raidId]: r[raidId].filter(x => x.user_id !== userId) }))
-  } else {
-    const { data } = await supabase.from('raid_rsvps').insert({ raid_id: raidId, user_id: userId, status: 'going' }).select().single()
-    setRsvps(r => ({ ...r, [raidId]: [...(r[raidId] || []), data] }))
-    // Notify faction leaders when someone RSVPs
-    const raid = raids.find(r => r.id === raidId)
-    if (raid && faction) {
-      const { data: profile } = await supabase.from('profiles').select('discord_username').eq('id', userId).single()
-      const username = profile?.discord_username || 'A member'
-      // Notify leaders and co-leaders
-      const { data: leaders } = await supabase.from('faction_members').select('user_id').eq('faction_id', faction.id).in('role', ['leader', 'co-leader'])
-      if (leaders?.length) {
-        await supabase.from('notifications').insert(leaders.map(l => ({
-          faction_id: faction.id,
-          user_id: l.user_id,
-          type: 'raid',
-          title: `✅ ${username} is going on ${raid.title}`,
-          body: `${new Date(raid.scheduled_at).toLocaleString()}`
-        })))
+    const existing = rsvps[raidId]?.find(r => r.user_id === userId)
+    if (existing) {
+      await supabase.from('raid_rsvps').delete().eq('id', existing.id)
+      setRsvps(r => ({ ...r, [raidId]: r[raidId].filter(x => x.user_id !== userId) }))
+    } else {
+      const { data } = await supabase.from('raid_rsvps').insert({ raid_id: raidId, user_id: userId, status: 'going' }).select().single()
+      setRsvps(r => ({ ...r, [raidId]: [...(r[raidId] || []), data] }))
+      const raid = raids.find(r => r.id === raidId)
+      if (raid && faction) {
+        const { data: profile } = await supabase.from('profiles').select('discord_username').eq('id', userId).single()
+        const username = profile?.discord_username || 'A member'
+        const { data: leaders } = await supabase.from('faction_members').select('user_id').eq('faction_id', faction.id).in('role', ['leader', 'co-leader'])
+        if (leaders?.length) {
+          await supabase.from('notifications').insert(leaders.map(l => ({
+            faction_id: faction.id, user_id: l.user_id, type: 'raid',
+            title: `✅ ${username} is going on ${raid.title}`,
+            body: new Date(raid.scheduled_at).toLocaleString()
+          })))
+        }
+        await sendWebhookNotification(
+          faction.id, 'raid',
+          `✅ RSVP — ${raid.title}`,
+          [
+            { name:'Member', value:username, inline:true },
+            { name:'Operation', value:raid.title, inline:true },
+            { name:'Time', value:new Date(raid.scheduled_at).toLocaleString(), inline:false },
+            { name:'Total Going', value:`${(rsvps[raidId]?.length || 0) + 1}`, inline:true },
+          ],
+          0x4ade80
+        )
       }
-      // Send Discord webhook notification
-      await sendWebhookNotification(
-        faction.id, 'raid',
-        `✅ RSVP — ${raid.title}`,
-        [
-          { name: 'Member', value: username, inline: true },
-          { name: 'Operation', value: raid.title, inline: true },
-          { name: 'Time', value: new Date(raid.scheduled_at).toLocaleString(), inline: false },
-          { name: 'Total Going', value: `${(rsvps[raidId]?.length || 0) + 1}`, inline: true },
-        ],
-        0x4ade80
-      )
     }
   }
-}
 
   async function notifyDiscord(factionId, raid) {
     const { data: settings } = await supabase.from('notification_settings').select('webhook_url, notify_raids').eq('faction_id', factionId).maybeSingle()
     if (!settings?.webhook_url || !settings?.notify_raids) return
     await fetch(settings.webhook_url, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ embeds: [{ title: '⚔️ Raid Scheduled', fields: [
-        { name: 'Operation', value: raid.title, inline: true },
-        { name: 'Target', value: raid.target_location || 'TBD', inline: true },
-        { name: 'Time', value: new Date(raid.scheduled_at).toLocaleString(), inline: false },
-      ], color: 0xf87171, timestamp: new Date().toISOString() }] })
+      method:'POST', headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ embeds:[{ title:'⚔️ Raid Scheduled', fields:[
+        { name:'Operation', value:raid.title, inline:true },
+        { name:'Target', value:raid.target_location || 'TBD', inline:true },
+        { name:'Time', value:new Date(raid.scheduled_at).toLocaleString(), inline:false },
+      ], color:0xf87171, timestamp:new Date().toISOString() }] })
     }).catch(() => {})
   }
 
@@ -152,21 +162,49 @@ export default function Raids({ session }) {
 
   return (
     <div style={{ maxWidth:900, margin:'40px auto', padding:'0 24px', display:'flex', flexDirection:'column', gap:'24px' }}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:'12px' }}>
         <div>
           <h1 style={{ fontFamily:'Share Tech Mono', fontSize:'24px', color:'var(--green)' }}>RAID PLANNER</h1>
           <p style={{ color:'var(--muted)', marginTop:'4px' }}>Schedule operations and track attendance</p>
         </div>
-        {canManage && (
-          <button className="btn btn-green" style={{ display:'flex', alignItems:'center', gap:'8px' }} onClick={() => setShowForm(f => !f)}>
-            <Plus size={15} /> Schedule Raid
-          </button>
-        )}
+        <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+          {canManage && raids.length > 0 && (
+            <button className="btn btn-ghost" style={{ fontSize:'13px', color:'var(--red)', display:'flex', alignItems:'center', gap:'6px' }} onClick={() => setShowClearModal(true)}>
+              <AlertTriangle size={13} /> Clear All Raids
+            </button>
+          )}
+          {canManage && (
+            <button className="btn btn-green" style={{ display:'flex', alignItems:'center', gap:'8px' }} onClick={() => setShowForm(f => !f)}>
+              <Plus size={15} /> Schedule Raid
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Clear Modal */}
+      {showClearModal && (
+        <div style={{ position:'fixed', inset:0, background:'#00000088', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:'24px' }} onClick={() => setShowClearModal(false)}>
+          <div className="card" style={{ maxWidth:'420px', width:'100%', display:'flex', flexDirection:'column', gap:'16px', borderColor:'var(--red)' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+              <AlertTriangle size={20} color="var(--red)" />
+              <h3 style={{ fontWeight:700, fontSize:'18px', color:'var(--red)' }}>Clear All Raids</h3>
+            </div>
+            <p style={{ color:'var(--muted)', fontSize:'14px' }}>
+              This will permanently delete all <strong style={{ color:'var(--text)' }}>{raids.length} raids</strong> and their RSVPs. This cannot be undone.
+            </p>
+            <div style={{ display:'flex', gap:'8px' }}>
+              <button className="btn" style={{ flex:1, background:'#b91c1c', color:'#fff', border:'none', fontWeight:700 }} onClick={clearAllRaids}>
+                Yes, Clear Everything
+              </button>
+              <button className="btn btn-ghost" style={{ flex:1 }} onClick={() => setShowClearModal(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {!canManage && (
         <div className="card" style={{ background:'#1a1a0d', borderColor:'var(--yellow)', fontSize:'13px', color:'var(--muted)' }}>
-          🔒 Only <strong style={{ color:'var(--yellow)' }}>Leaders</strong> and <strong style={{ color:'var(--yellow)' }}>Co-Leaders</strong> can schedule raids. You can RSVP to upcoming operations below.
+          🔒 Only <strong style={{ color:'var(--yellow)' }}>Leaders</strong> and <strong style={{ color:'var(--yellow)' }}>Co-Leaders</strong> can schedule raids. You can RSVP below.
         </div>
       )}
 
@@ -212,14 +250,14 @@ export default function Raids({ session }) {
 
       {upcoming.length > 0 && (
         <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
-          <h3 style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'14px', letterSpacing:'0.1em' }}>UPCOMING OPERATIONS</h3>
+          <h3 style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'14px', letterSpacing:'0.1em' }}>UPCOMING OPERATIONS ({upcoming.length})</h3>
           {upcoming.map(raid => {
             const myRsvp = rsvps[raid.id]?.find(r => r.user_id === userId)
             const goingCount = rsvps[raid.id]?.length || 0
             return (
               <div key={raid.id} className="card" style={{ borderLeft:'3px solid var(--red)', display:'flex', flexDirection:'column', gap:'10px' }}>
                 <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', flexWrap:'wrap', gap:'10px' }}>
-                  <div>
+                  <div style={{ flex:1, minWidth:0 }}>
                     <h3 style={{ fontSize:'18px', fontWeight:700 }}>{raid.title}</h3>
                     <div style={{ display:'flex', gap:'16px', marginTop:'6px', flexWrap:'wrap' }}>
                       {raid.target_location && <span style={{ display:'flex', alignItems:'center', gap:'4px', fontSize:'13px', color:'var(--muted)' }}><MapPin size={13} /> {raid.target_location}</span>}
@@ -228,7 +266,7 @@ export default function Raids({ session }) {
                     </div>
                     {raid.description && <p style={{ fontSize:'14px', color:'var(--muted)', marginTop:'8px' }}>{raid.description}</p>}
                   </div>
-                  <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
+                  <div style={{ display:'flex', gap:'8px', alignItems:'center', flexShrink:0 }}>
                     <button onClick={() => toggleRsvp(raid.id)} className={`btn ${myRsvp ? 'btn-ghost' : 'btn-green'}`} style={{ fontSize:'13px', padding:'6px 14px' }}>
                       {myRsvp ? '✓ Going' : 'RSVP'}
                     </button>
@@ -247,7 +285,7 @@ export default function Raids({ session }) {
 
       {past.length > 0 && (
         <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
-          <h3 style={{ fontFamily:'Share Tech Mono', color:'var(--muted)', fontSize:'14px', letterSpacing:'0.1em' }}>PAST OPERATIONS</h3>
+          <h3 style={{ fontFamily:'Share Tech Mono', color:'var(--muted)', fontSize:'14px', letterSpacing:'0.1em' }}>PAST OPERATIONS ({past.length})</h3>
           {past.map(raid => (
             <PastRaid key={raid.id} raid={raid} userId={userId} faction={faction} canManage={canManage} setRaids={setRaids} />
           ))}
@@ -274,7 +312,7 @@ function PastRaid({ raid, userId, faction, canManage, setRaids }) {
     if (faction) {
       await supabase.from('events').insert({
         faction_id: faction.id, created_by: userId, type: 'raid',
-        title: `Raid Debrief: ${raid.title}`,
+        title: `📋 Raid Debrief: ${raid.title}`,
         description: `Outcome: ${debrief.outcome} | Casualties: ${debrief.casualties} | Loot: ${debrief.loot_summary}`
       })
     }
@@ -289,7 +327,11 @@ function PastRaid({ raid, userId, faction, canManage, setRaids }) {
           <div style={{ fontSize:'12px', color:'var(--muted)', marginTop:'2px' }}>{new Date(raid.scheduled_at).toLocaleString()}</div>
         </div>
         <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
-          {raid.outcome && <span style={{ fontSize:'13px', color: raid.outcome==='success' ? 'var(--green)' : 'var(--red)' }}>{raid.outcome==='success' ? '✅ Success' : raid.outcome==='partial' ? '⚠️ Partial' : raid.outcome==='aborted' ? '🚫 Aborted' : '❌ Failed'}</span>}
+          {raid.outcome && (
+            <span style={{ fontSize:'13px', color: raid.outcome==='success' ? 'var(--green)' : 'var(--red)' }}>
+              {raid.outcome==='success' ? '✅ Success' : raid.outcome==='partial' ? '⚠️ Partial' : raid.outcome==='aborted' ? '🚫 Aborted' : '❌ Failed'}
+            </span>
+          )}
           {raid.rating > 0 && <span style={{ color:'var(--yellow)' }}>{'★'.repeat(raid.rating)}</span>}
           {canManage && (
             <button onClick={() => setOpen(o => !o)} className="btn btn-ghost" style={{ fontSize:'12px', padding:'4px 10px' }}>

@@ -1,19 +1,22 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { useRole } from '../hooks/useRole'
-import { Plus, TrendingUp, TrendingDown, Package } from 'lucide-react'
+import { Plus, TrendingUp, TrendingDown, Package, AlertTriangle } from 'lucide-react'
 
 const CATEGORIES = ['Weapons', 'Ammo', 'Medical', 'Food & Water', 'Vehicles', 'Base Materials', 'Currency', 'Other']
 
 export default function Treasury({ session }) {
-  const { faction } = useRole(session.user.id)
+  const { faction, role } = useRole(session.user.id)
   const [transactions, setTransactions] = useState([])
   const [showForm, setShowForm] = useState(false)
+  const [showClearModal, setShowClearModal] = useState(false)
+  const [clearReason, setClearReason] = useState('')
   const [form, setForm] = useState({ item_name:'', quantity:1, category:'Weapons', transaction_type:'deposit', notes:'' })
   const [filter, setFilter] = useState('all')
   const userId = session.user.id
+  const canManage = role === 'leader' || role === 'co-leader'
 
-  useEffect(() => { if (faction) load() }, [faction])
+  useEffect(() => { if (faction) load() }, [faction?.id])
 
   async function load() {
     const { data } = await supabase
@@ -25,32 +28,50 @@ export default function Treasury({ session }) {
   }
 
   async function addTransaction() {
-  if (!form.item_name.trim()) return
-  const { data, error } = await supabase.from('treasury').insert({
-    faction_id: faction.id,
-    created_by: userId,
-    item_name: form.item_name,
-    quantity: Number(form.quantity),
-    category: form.category,
-    transaction_type: form.transaction_type,
-    notes: form.notes
-  }).select('*, profile:profiles!treasury_created_by_fkey(discord_username, discord_avatar)').single()
-  if (!error) {
-    setTransactions(t => [data, ...t])
-    setForm({ item_name:'', quantity:1, category:'Weapons', transaction_type:'deposit', notes:'' })
-    setShowForm(false)
-    // Log to activity
+    if (!form.item_name.trim()) return
+    const { data, error } = await supabase.from('treasury').insert({
+      faction_id: faction.id,
+      created_by: userId,
+      item_name: form.item_name,
+      quantity: Number(form.quantity),
+      category: form.category,
+      transaction_type: form.transaction_type,
+      notes: form.notes
+    }).select('*, profile:profiles!treasury_created_by_fkey(discord_username, discord_avatar)').single()
+    if (!error) {
+      setTransactions(t => [data, ...t])
+      setForm({ item_name:'', quantity:1, category:'Weapons', transaction_type:'deposit', notes:'' })
+      setShowForm(false)
+      await supabase.from('activity_log').insert({
+        faction_id: faction.id,
+        user_id: userId,
+        action_type: form.transaction_type === 'deposit' ? 'treasury_deposit' : 'treasury_withdrawal',
+        description: `${form.transaction_type === 'deposit' ? 'Deposited' : 'Withdrew'} ×${form.quantity} ${form.item_name}${form.notes ? ` (${form.notes})` : ''}`,
+        metadata: { item: form.item_name, quantity: Number(form.quantity), type: form.transaction_type }
+      })
+    }
+  }
+
+  async function clearTreasury() {
+    if (!faction) return
+    await supabase.from('treasury').delete().eq('faction_id', faction.id)
     await supabase.from('activity_log').insert({
       faction_id: faction.id,
       user_id: userId,
-      action_type: form.transaction_type === 'deposit' ? 'treasury_deposit' : 'treasury_withdrawal',
-      description: `${form.transaction_type === 'deposit' ? 'Deposited' : 'Withdrew'} ×${form.quantity} ${form.item_name} ${form.notes ? `(${form.notes})` : ''}`,
-      metadata: { item: form.item_name, quantity: Number(form.quantity), type: form.transaction_type }
+      action_type: 'treasury_clear',
+      description: `Treasury cleared${clearReason.trim() ? `: ${clearReason.trim()}` : ''}`,
+      metadata: { reason: clearReason.trim(), count: transactions.length }
     })
+    await supabase.from('events').insert({
+      faction_id: faction.id, created_by: userId, type: 'custom',
+      title: '🗑️ Treasury Cleared',
+      description: clearReason.trim() || 'Treasury was cleared by leadership'
+    })
+    setTransactions([])
+    setShowClearModal(false)
+    setClearReason('')
   }
-}
 
-  // Calculate current stock per item
   const stockMap = {}
   transactions.forEach(t => {
     const key = `${t.item_name}__${t.category}`
@@ -58,25 +79,61 @@ export default function Treasury({ session }) {
     if (t.transaction_type === 'deposit') stockMap[key].quantity += t.quantity
     else stockMap[key].quantity -= t.quantity
   })
-  const stock = Object.values(stockMap).filter(s => s.quantity > 0).sort((a,b) => a.item_name.localeCompare(b.item_name))
-
+  const stock = Object.values(stockMap).filter(s => s.quantity > 0).sort((a, b) => a.item_name.localeCompare(b.item_name))
   const filtered = filter === 'all' ? transactions : transactions.filter(t => t.transaction_type === filter)
   const totalDeposits = transactions.filter(t => t.transaction_type === 'deposit').reduce((sum, t) => sum + t.quantity, 0)
   const totalWithdrawals = transactions.filter(t => t.transaction_type === 'withdrawal').reduce((sum, t) => sum + t.quantity, 0)
 
   return (
     <div style={{ maxWidth:960, margin:'40px auto', padding:'0 24px', display:'flex', flexDirection:'column', gap:'24px' }}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:'12px' }}>
         <div>
           <h1 style={{ fontFamily:'Share Tech Mono', fontSize:'24px', color:'var(--green)' }}>FACTION TREASURY</h1>
           <p style={{ color:'var(--muted)', marginTop:'4px' }}>Track faction wealth — deposits and withdrawals</p>
         </div>
-        {faction && (
-          <button className="btn btn-green" style={{ display:'flex', alignItems:'center', gap:'8px' }} onClick={() => setShowForm(f => !f)}>
-            <Plus size={14} /> Log Transaction
-          </button>
-        )}
+        <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+          {canManage && transactions.length > 0 && (
+            <button className="btn btn-ghost" style={{ fontSize:'13px', color:'var(--red)', display:'flex', alignItems:'center', gap:'6px' }} onClick={() => setShowClearModal(true)}>
+              <AlertTriangle size={13} /> Clear Treasury
+            </button>
+          )}
+          {faction && (
+            <button className="btn btn-green" style={{ display:'flex', alignItems:'center', gap:'8px' }} onClick={() => setShowForm(f => !f)}>
+              <Plus size={14} /> Log Transaction
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Clear Modal */}
+      {showClearModal && (
+        <div style={{ position:'fixed', inset:0, background:'#00000088', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:'24px' }} onClick={() => setShowClearModal(false)}>
+          <div className="card" style={{ maxWidth:'420px', width:'100%', display:'flex', flexDirection:'column', gap:'16px', borderColor:'var(--red)' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+              <AlertTriangle size={20} color="var(--red)" />
+              <h3 style={{ fontWeight:700, fontSize:'18px', color:'var(--red)' }}>Clear Treasury</h3>
+            </div>
+            <p style={{ color:'var(--muted)', fontSize:'14px' }}>
+              This will permanently delete all <strong style={{ color:'var(--text)' }}>{transactions.length} transactions</strong>. This cannot be undone.
+            </p>
+            <div>
+              <label style={{ fontSize:'12px', color:'var(--muted)', display:'block', marginBottom:'6px' }}>REASON (optional — logged to activity)</label>
+              <input
+                placeholder="e.g. Server wipe, Starting fresh..."
+                value={clearReason}
+                onChange={e => setClearReason(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div style={{ display:'flex', gap:'8px' }}>
+              <button className="btn" style={{ flex:1, background:'#b91c1c', color:'#fff', border:'none', fontWeight:700 }} onClick={clearTreasury}>
+                Yes, Clear Everything
+              </button>
+              <button className="btn btn-ghost" style={{ flex:1 }} onClick={() => setShowClearModal(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Summary stats */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))', gap:'12px' }}>
@@ -98,7 +155,7 @@ export default function Treasury({ session }) {
         </div>
       </div>
 
-      {/* Add transaction form */}
+      {/* Add form */}
       {showForm && (
         <div className="card" style={{ display:'flex', flexDirection:'column', gap:'12px', borderColor:'var(--green-dim)' }}>
           <h3 style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'14px' }}>LOG TRANSACTION</h3>
@@ -125,7 +182,7 @@ export default function Treasury({ session }) {
             <input placeholder="Item name (e.g. AK-74)" value={form.item_name} onChange={e => setForm(f => ({...f, item_name:e.target.value}))} />
             <input type="number" min={1} value={form.quantity} onChange={e => setForm(f => ({...f, quantity:e.target.value}))} placeholder="Qty" />
           </div>
-          <input placeholder="Notes (optional — who withdrew it, why...)" value={form.notes} onChange={e => setForm(f => ({...f, notes:e.target.value}))} />
+          <input placeholder="Notes (optional)" value={form.notes} onChange={e => setForm(f => ({...f, notes:e.target.value}))} />
           <div style={{ display:'flex', gap:'8px' }}>
             <button className="btn btn-green" onClick={addTransaction}>Log Transaction</button>
             <button className="btn btn-ghost" onClick={() => setShowForm(false)}>Cancel</button>
@@ -133,12 +190,11 @@ export default function Treasury({ session }) {
         </div>
       )}
 
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'20px' }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))', gap:'20px' }}>
         {/* Current Stock */}
         <div className="card" style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
-          <h3 style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'14px', letterSpacing:'0.05em' }}>
-            <Package size={14} style={{ marginRight:'6px' }} />
-            CURRENT STOCK ({stock.length} items)
+          <h3 style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'14px', letterSpacing:'0.05em', display:'flex', alignItems:'center', gap:'8px' }}>
+            <Package size={14} /> CURRENT STOCK ({stock.length} items)
           </h3>
           {stock.length === 0 && <p style={{ color:'var(--muted)', fontSize:'13px' }}>No items in treasury yet.</p>}
           <div style={{ maxHeight:'400px', overflowY:'auto', display:'flex', flexDirection:'column', gap:'6px' }}>
@@ -156,7 +212,7 @@ export default function Treasury({ session }) {
 
         {/* Transaction log */}
         <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
-          <div style={{ display:'flex', gap:'6px' }}>
+          <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
             {['all', 'deposit', 'withdrawal'].map(f => (
               <button key={f} onClick={() => setFilter(f)} className="btn" style={{
                 padding:'4px 12px', fontSize:'12px',
@@ -166,7 +222,6 @@ export default function Treasury({ session }) {
               }}>{f === 'all' ? 'All' : f === 'deposit' ? '↑ Deposits' : '↓ Withdrawals'}</button>
             ))}
           </div>
-
           <div style={{ display:'flex', flexDirection:'column', gap:'6px', maxHeight:'420px', overflowY:'auto' }}>
             {filtered.length === 0 && <p style={{ color:'var(--muted)', fontSize:'13px', padding:'20px', textAlign:'center' }}>No transactions yet.</p>}
             {filtered.map(t => (
@@ -180,7 +235,7 @@ export default function Treasury({ session }) {
                     </span>
                   </div>
                   {t.notes && <div style={{ fontSize:'11px', color:'var(--muted)', marginTop:'2px' }}>{t.notes}</div>}
-                  <div style={{ fontSize:'11px', color:'var(--muted)', marginTop:'3px', display:'flex', alignItems:'center', gap:'5px' }}>
+                  <div style={{ fontSize:'11px', color:'var(--muted)', marginTop:'3px', display:'flex', alignItems:'center', gap:'5px', flexWrap:'wrap' }}>
                     {t.profile?.discord_avatar && <img src={t.profile.discord_avatar} style={{ width:14, height:14, borderRadius:'50%' }} />}
                     <span>{t.profile?.discord_username || 'Unknown'}</span>
                     <span>•</span>
