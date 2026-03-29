@@ -5,8 +5,8 @@ import { LayoutDashboard, Map, Sword, ShoppingBag, Shield, Globe, Settings, Bell
 
 const NAV_GROUPS = [
   { label:'Home', icon:LayoutDashboard, to:'/', single:true },
-  {  label:'Hub', icon:Megaphone, to:'/hub', single:true },
-  
+  { label:'Hub', icon:Megaphone, to:'/hub', single:true },
+  {
     label:'Operations', icon:Sword,
     children:[
       { to:'/raids', label:'Raids', icon:Sword },
@@ -123,14 +123,27 @@ export default function Navbar({ session }) {
   }
 
   async function loadNotifications() {
-    const { data } = await supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending:false }).limit(20)
+    const { data } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending:false })
+      .limit(20)
     setNotifications(data || [])
   }
 
   async function loadUnreadMessages() {
-    const { data: mem } = await supabase.from('faction_members').select('faction_id').eq('user_id', userId).maybeSingle()
+    const { data: mem } = await supabase
+      .from('faction_members')
+      .select('faction_id')
+      .eq('user_id', userId)
+      .maybeSingle()
     if (!mem) return
-    const { count } = await supabase.from('faction_messages').select('id', { count:'exact' }).eq('to_faction_id', mem.faction_id).eq('read', false)
+    const { count } = await supabase
+      .from('faction_messages')
+      .select('id', { count:'exact' })
+      .eq('to_faction_id', mem.faction_id)
+      .eq('read', false)
     setUnreadMessages(count || 0)
   }
 
@@ -165,11 +178,15 @@ export default function Navbar({ session }) {
         height:'56px', position:'sticky', top:0, zIndex:100, gap:'2px'
       }}>
         {/* Logo */}
-        <span onClick={() => navigate('/')} style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'15px', marginRight:'12px', letterSpacing:'0.1em', whiteSpace:'nowrap', cursor:'pointer', flexShrink:0 }}>
+        <span onClick={() => navigate('/')} style={{
+          fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'15px',
+          marginRight:'12px', letterSpacing:'0.1em', whiteSpace:'nowrap',
+          cursor:'pointer', flexShrink:0
+        }}>
           ☢️ FACTION HUB
         </span>
 
-        {/* Desktop nav — hidden on mobile */}
+        {/* Desktop nav */}
         {!isMobile && (
           <div style={{ display:'flex', gap:'2px', flex:1 }}>
             {NAV_GROUPS.map(group => {
@@ -251,21 +268,28 @@ export default function Navbar({ session }) {
         {isMobile && <div style={{ flex:1 }} />}
 
         {/* Right side */}
-        <div style={{ display:'flex', flexDirection:'column', gap:'8px', padding:'12px', background:'var(--bg)', borderRadius:'8px', marginBottom:'8px' }}>
-  <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
-    {avatar
-      ? <img src={avatar} style={{ width:40, height:40, borderRadius:'50%', border:'1px solid var(--border)', flexShrink:0 }} />
-      : <div style={{ width:40, height:40, borderRadius:'50%', background:'var(--border)', flexShrink:0 }} />
-    }
-    <div style={{ flex:1 }}>
-      <div style={{ fontWeight:700, fontSize:'15px' }}>{name}</div>
-      <div style={{ fontSize:'12px', color:'var(--muted)' }}>Discord Account</div>
-    </div>
-  </div>
-  <button onClick={logout} className="btn btn-ghost" style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', fontSize:'13px', padding:'8px', color:'var(--red)', borderColor:'#b91c1c44', width:'100%' }}>
-    <LogOut size={14} /> Sign Out
-  </button>
-</div>
+        <div style={{ display:'flex', alignItems:'center', gap:'8px', flexShrink:0 }}>
+
+          {/* Bell */}
+          <div ref={bellRef} style={{ position:'relative' }}>
+            <button
+              onClick={() => { setShowBell(s => !s); setOpenGroup(null); setMobileOpen(false) }}
+              style={{
+                background:'transparent', border:'none',
+                color: unread > 0 ? 'var(--green)' : 'var(--muted)',
+                cursor:'pointer', padding:'6px', position:'relative', display:'flex', alignItems:'center'
+              }}
+            >
+              <Bell size={17} />
+              {unread > 0 && (
+                <span style={{
+                  position:'absolute', top:'1px', right:'1px',
+                  background:'var(--red)', color:'#fff', borderRadius:'50%',
+                  width:'14px', height:'14px', fontSize:'9px', fontWeight:700,
+                  display:'flex', alignItems:'center', justifyContent:'center'
+                }}>{unread > 9 ? '9+' : unread}</span>
+              )}
+            </button>
 
             {showBell && (
               <div style={{
@@ -276,7 +300,11 @@ export default function Navbar({ session }) {
               }}>
                 <div style={{ padding:'10px 14px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                   <span style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'12px' }}>NOTIFICATIONS</span>
-                  {unread > 0 && <button onClick={markAllRead} style={{ background:'transparent', border:'none', color:'var(--muted)', cursor:'pointer', fontSize:'11px' }}>Mark all read</button>}
+                  {unread > 0 && (
+                    <button onClick={markAllRead} style={{ background:'transparent', border:'none', color:'var(--muted)', cursor:'pointer', fontSize:'11px' }}>
+                      Mark all read
+                    </button>
+                  )}
                 </div>
                 <div style={{ overflowY:'auto', flex:1 }}>
                   {notifications.length === 0 && (
@@ -305,8 +333,12 @@ export default function Navbar({ session }) {
           {/* Desktop user info */}
           {!isMobile && (
             <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-              {avatar && <img src={avatar} style={{ width:26, height:26, borderRadius:'50%', border:'1px solid var(--border)', flexShrink:0 }} />}
-              <span style={{ fontSize:'11px', color:'var(--muted)', whiteSpace:'nowrap', maxWidth:'80px', overflow:'hidden', textOverflow:'ellipsis' }}>{name}</span>
+              {avatar && (
+                <img src={avatar} style={{ width:26, height:26, borderRadius:'50%', border:'1px solid var(--border)', flexShrink:0 }} />
+              )}
+              <span style={{ fontSize:'11px', color:'var(--muted)', whiteSpace:'nowrap', maxWidth:'80px', overflow:'hidden', textOverflow:'ellipsis' }}>
+                {name}
+              </span>
               <button onClick={logout} className="btn btn-ghost" style={{ display:'flex', alignItems:'center', gap:'4px', fontSize:'11px', padding:'4px 8px', flexShrink:0 }}>
                 <LogOut size={12} /> Out
               </button>
@@ -333,18 +365,24 @@ export default function Navbar({ session }) {
           padding:'16px', display:'flex', flexDirection:'column', gap:'4px',
           borderTop:'1px solid var(--border)'
         }}>
-          {/* User info */}
-          <div style={{ display:'flex', alignItems:'center', gap:'12px', padding:'12px', background:'var(--bg)', borderRadius:'8px', marginBottom:'8px' }}>
-            {avatar
-              ? <img src={avatar} style={{ width:36, height:36, borderRadius:'50%', border:'1px solid var(--border)', flexShrink:0 }} />
-              : <div style={{ width:36, height:36, borderRadius:'50%', background:'var(--border)', flexShrink:0 }} />
-            }
-            <span style={{ fontWeight:600, fontSize:'15px', flex:1 }}>{name}</span>
-            <button onClick={logout} className="btn btn-ghost" style={{ display:'flex', alignItems:'center', gap:'4px', fontSize:'12px', padding:'5px 10px' }}>
-              <LogOut size={12} /> Logout
+          {/* User info + logout */}
+          <div style={{ display:'flex', flexDirection:'column', gap:'8px', padding:'12px', background:'var(--bg)', borderRadius:'8px', marginBottom:'8px' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
+              {avatar
+                ? <img src={avatar} style={{ width:40, height:40, borderRadius:'50%', border:'1px solid var(--border)', flexShrink:0 }} />
+                : <div style={{ width:40, height:40, borderRadius:'50%', background:'var(--border)', flexShrink:0 }} />
+              }
+              <div style={{ flex:1 }}>
+                <div style={{ fontWeight:700, fontSize:'15px' }}>{name}</div>
+                <div style={{ fontSize:'12px', color:'var(--muted)' }}>Discord Account</div>
+              </div>
+            </div>
+            <button onClick={logout} className="btn btn-ghost" style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', fontSize:'13px', padding:'8px', color:'var(--red)', borderColor:'#b91c1c44', width:'100%' }}>
+              <LogOut size={14} /> Sign Out
             </button>
           </div>
 
+          {/* Nav links */}
           {NAV_GROUPS.map(group => {
             if (group.single) {
               return (
