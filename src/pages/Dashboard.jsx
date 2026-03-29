@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { Map, Package, Shield, Users, Sword, TrendingUp, Target, RefreshCw, Archive } from 'lucide-react'
+import { Map, Package, Shield, Users, Sword, TrendingUp, Target, RefreshCw } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 function timeAgo(date) {
