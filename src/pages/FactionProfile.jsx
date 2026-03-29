@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { useRole } from '../hooks/useRole'
-import { Users, Map, Sword, Shield, Star, Edit2, Check, X, StickyNote, Trophy, Target, Copy } from 'lucide-react'
+import { Users, Map, Sword, Shield, Star, Edit2, Check, X, StickyNote, Trophy, Target, Copy, Package, Flame } from 'lucide-react'
 
 const ROLE_ICONS = { leader:'👑', 'co-leader':'⭐', recruiter:'📋', member:'👤' }
 const ROLE_COLORS = { leader:'tag-green', 'co-leader':'tag-green', recruiter:'tag-yellow', member:'tag-yellow' }
@@ -52,21 +52,29 @@ export default function FactionProfile({ session }) {
     setFaction(f)
     setNewName(f.name)
 
-    const [mems, territories, raids, pacts, events, achvs] = await Promise.all([
+    const [mems, territories, raids, pacts, events, achvs, bounties, resources, wars] = await Promise.all([
       supabase.from('faction_members').select('*, profile:profiles(discord_username, discord_avatar)').eq('faction_id', id).order('joined_at'),
       supabase.from('territories').select('id', { count:'exact', head:true }).eq('faction_id', id),
       supabase.from('raids').select('*').eq('faction_id', id).order('scheduled_at', { ascending:false }).limit(5),
       supabase.from('diplomacy').select('*, faction_a_info:factions!diplomacy_faction_a_fkey(name), faction_b_info:factions!diplomacy_faction_b_fkey(name)').or(`faction_a.eq.${id},faction_b.eq.${id}`).eq('status', 'active'),
       supabase.from('events').select('*').eq('faction_id', id).order('created_at', { ascending:false }).limit(6),
-      supabase.from('achievements').select('*').eq('faction_id', id)
+      supabase.from('achievements').select('*').eq('faction_id', id),
+      supabase.from('bounties').select('id', { count:'exact', head:true }).eq('faction_id', id).eq('status', 'active'),
+      supabase.from('resources').select('quantity').eq('faction_id', id),
+      supabase.from('diplomacy').select('id', { count:'exact', head:true }).or(`faction_a.eq.${id},faction_b.eq.${id}`).eq('type', 'war').eq('status', 'active'),
     ])
+
+    const totalStock = resources.data?.reduce((s, r) => s + (r.quantity || 0), 0) || 0
 
     setMembers(mems.data || [])
     setStats({
       members: mems.data?.length || 0,
       territories: territories.count || 0,
       raids: raids.data?.length || 0,
-      pacts: pacts.data?.filter(p => p.type === 'nap').length || 0,
+      alliances: pacts.data?.filter(p => p.type === 'nap').length || 0,
+      bounties: bounties.count || 0,
+      stockpile: totalStock,
+      activeWars: wars.count || 0,
     })
     setRecentRaids(raids.data || [])
     setRecentEvents(events.data || [])
@@ -96,8 +104,7 @@ export default function FactionProfile({ session }) {
     const oldName = faction.name
     await supabase.from('factions').update({ name: newName.trim() }).eq('id', id)
     await supabase.from('faction_name_history').insert({
-      faction_id: id, old_name: oldName,
-      new_name: newName.trim(), changed_by: userId
+      faction_id: id, old_name: oldName, new_name: newName.trim(), changed_by: userId
     })
     await supabase.from('events').insert({
       faction_id: id, created_by: userId, type: 'custom',
@@ -115,8 +122,7 @@ export default function FactionProfile({ session }) {
       setNotes(n => ({...n, [targetUserId]: {...existing, note: noteText}}))
     } else {
       const { data } = await supabase.from('member_notes').insert({
-        faction_id: id, target_user_id: targetUserId,
-        note: noteText, created_by: userId
+        faction_id: id, target_user_id: targetUserId, note: noteText, created_by: userId
       }).select().single()
       if (data) setNotes(n => ({...n, [targetUserId]: data}))
     }
@@ -133,7 +139,7 @@ export default function FactionProfile({ session }) {
   }
 
   function copyLink() {
-    navigator.clipboard.writeText(`${window.location.origin}/faction/${id}`)
+    try { navigator.clipboard.writeText(`${window.location.origin}/faction/${id}`) } catch {}
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -143,9 +149,7 @@ export default function FactionProfile({ session }) {
   const factionColor = faction?.primary_color || 'var(--green)'
 
   if (loading) return (
-    <div style={{ padding:'80px', textAlign:'center', color:'var(--muted)', fontFamily:'Share Tech Mono' }}>
-      LOADING FACTION DATA...
-    </div>
+    <div className="page-loading"><div className="spinner" /></div>
   )
 
   if (!faction) return null
@@ -153,14 +157,11 @@ export default function FactionProfile({ session }) {
   return (
     <div style={{ maxWidth:900, margin:'40px auto', padding:'0 24px', display:'flex', flexDirection:'column', gap:'20px' }}>
 
-      {/* Header card */}
+      {/* Header */}
       <div className="card" style={{ borderLeft:`4px solid ${factionColor}`, padding:'24px' }}>
         <div style={{ display:'flex', alignItems:'flex-start', gap:'16px', flexWrap:'wrap' }}>
-          {/* Flag */}
-          <div style={{ fontSize:'48px', flexShrink:0 }}>{faction.flag || '☢️'}</div>
-
+          <div style={{ fontSize:'52px', flexShrink:0, lineHeight:1 }}>{faction.flag || '☢️'}</div>
           <div style={{ flex:1, minWidth:'200px' }}>
-            {/* Name row */}
             <div style={{ display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap', marginBottom:'6px' }}>
               {faction.tag && (
                 <span style={{ fontFamily:'Share Tech Mono', color:factionColor, fontSize:'14px', border:`1px solid ${factionColor}44`, padding:'2px 8px', borderRadius:'4px' }}>
@@ -182,11 +183,14 @@ export default function FactionProfile({ session }) {
                 </button>
               )}
             </div>
-
-            {/* Badges */}
             <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', marginBottom:'8px' }}>
               {isOwnFaction && <span className="tag tag-green">Your Faction</span>}
               {faction.is_recruiting && <span className="tag tag-yellow">🔎 Recruiting</span>}
+              {stats.activeWars > 0 && (
+                <span style={{ background:'#450a0a', color:'var(--red)', padding:'2px 10px', borderRadius:'999px', fontSize:'12px', fontWeight:700 }}>
+                  💀 {stats.activeWars} Active War{stats.activeWars !== 1 ? 's' : ''}
+                </span>
+              )}
               {diploLabel && (
                 <span style={{ background:`${diploColor}22`, color:diploColor, padding:'2px 10px', borderRadius:'999px', fontSize:'12px', fontWeight:700 }}>
                   {diploLabel}
@@ -194,42 +198,36 @@ export default function FactionProfile({ session }) {
               )}
               {achievements.length > 0 && (
                 <span style={{ background:'#78350f22', color:'var(--yellow)', padding:'2px 10px', borderRadius:'999px', fontSize:'12px', fontWeight:700 }}>
-                  🏆 {achievements.length} achievement{achievements.length !== 1 ? 's' : ''}
+                  🏆 {achievements.length} Achievement{achievements.length !== 1 ? 's' : ''}
                 </span>
               )}
             </div>
-
-            {faction.server_name && (
-              <p style={{ color:'var(--muted)', fontSize:'13px', marginBottom:'6px' }}>📡 {faction.server_name}</p>
-            )}
-            {faction.description && (
-              <p style={{ color:'var(--text)', fontSize:'14px', lineHeight:1.6 }}>{faction.description}</p>
-            )}
+            {faction.server_name && <p style={{ color:'var(--muted)', fontSize:'13px', marginBottom:'6px' }}>📡 {faction.server_name}</p>}
+            {faction.description && <p style={{ color:'var(--text)', fontSize:'14px', lineHeight:1.6 }}>{faction.description}</p>}
           </div>
-
-          {/* Copy link */}
           <button className="btn btn-ghost" style={{ fontSize:'12px', display:'flex', alignItems:'center', gap:'6px', flexShrink:0 }} onClick={copyLink}>
             <Copy size={12} /> {copied ? '✓ Copied!' : 'Share'}
           </button>
         </div>
       </div>
 
-      {/* Stats */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(140px, 1fr))', gap:'10px' }}>
+      {/* Stats — 7 categories */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(120px, 1fr))', gap:'10px' }}>
         {[
           { label:'Members', value:stats.members, icon:Users, color:'var(--green)' },
           { label:'Territories', value:stats.territories, icon:Map, color:'var(--yellow)' },
           { label:'Raids', value:stats.raids, icon:Sword, color:'var(--red)' },
-          { label:'Alliances', value:stats.pacts, icon:Shield, color:'#818cf8' },
+          { label:'Alliances', value:stats.alliances, icon:Shield, color:'#818cf8' },
+          { label:'Bounties', value:stats.bounties, icon:Target, color:'var(--yellow)' },
+          { label:'Stockpile', value:stats.stockpile, icon:Package, color:'#60a5fa' },
+          { label:'Active Wars', value:stats.activeWars, icon:Flame, color: stats.activeWars > 0 ? 'var(--red)' : 'var(--muted)' },
         ].map(({ label, value, icon:Icon, color }) => (
-          <div key={label} className="card" style={{ display:'flex', gap:'12px', alignItems:'center', padding:'14px' }}>
-            <div style={{ background:`${color}22`, borderRadius:'8px', padding:'8px', flexShrink:0 }}>
-              <Icon size={18} color={color} />
+          <div key={label} className="card" style={{ display:'flex', flexDirection:'column', alignItems:'center', padding:'14px 10px', textAlign:'center', gap:'6px' }}>
+            <div style={{ background:`${color}22`, borderRadius:'8px', padding:'8px' }}>
+              <Icon size={16} color={color} />
             </div>
-            <div>
-              <div style={{ fontFamily:'Share Tech Mono', fontSize:'24px', color, fontWeight:700 }}>{value}</div>
-              <div style={{ fontSize:'12px', color:'var(--muted)' }}>{label}</div>
-            </div>
+            <div style={{ fontFamily:'Share Tech Mono', fontSize:'22px', color, fontWeight:700, lineHeight:1 }}>{value ?? 0}</div>
+            <div style={{ fontSize:'11px', color:'var(--muted)' }}>{label}</div>
           </div>
         ))}
       </div>
@@ -242,7 +240,7 @@ export default function FactionProfile({ session }) {
           </h3>
           <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
             {achievements.map(a => {
-              const meta = ACHIEVEMENTS_META[a.type] || { label: a.type, icon:'🏅' }
+              const meta = ACHIEVEMENTS_META[a.type] || { label:a.type, icon:'🏅' }
               return (
                 <div key={a.id} style={{ display:'flex', alignItems:'center', gap:'6px', background:'#78350f22', border:'1px solid #92400e44', borderRadius:'8px', padding:'6px 12px' }}>
                   <span style={{ fontSize:'16px' }}>{meta.icon}</span>
@@ -254,8 +252,8 @@ export default function FactionProfile({ session }) {
         </div>
       )}
 
-      {/* Members + Activity grid */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px' }}>
+      {/* Members + Activity — stack on mobile */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))', gap:'16px' }}>
 
         {/* Members */}
         <div className="card" style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
@@ -263,6 +261,7 @@ export default function FactionProfile({ session }) {
             <Users size={15} color="var(--green)" /> Members ({members.length})
           </h3>
           <div style={{ display:'flex', flexDirection:'column', gap:'2px', maxHeight:'320px', overflowY:'auto' }}>
+            {members.length === 0 && <p style={{ color:'var(--muted)', fontSize:'13px' }}>No members yet.</p>}
             {members.map(m => (
               <div key={m.id} style={{ display:'flex', alignItems:'center', gap:'8px', padding:'6px 0', borderBottom:'1px solid var(--border)' }}>
                 {m.profile?.discord_avatar
@@ -300,7 +299,10 @@ export default function FactionProfile({ session }) {
               <div style={{ display:'flex', gap:'6px' }}>
                 <button className="btn btn-green" style={{ fontSize:'12px', padding:'4px 10px' }} onClick={() => saveNote(editingNote)}>Save</button>
                 {notes[editingNote] && (
-                  <button className="btn btn-ghost" style={{ fontSize:'12px', padding:'4px 10px', color:'var(--red)' }} onClick={() => { setEditingNote(null); setNotes(n => { const c = {...n}; delete c[editingNote]; return c }) }}>Delete</button>
+                  <button className="btn btn-ghost" style={{ fontSize:'12px', padding:'4px 10px', color:'var(--red)' }}
+                    onClick={() => { setEditingNote(null); setNotes(n => { const c = {...n}; delete c[editingNote]; return c }) }}>
+                    Delete
+                  </button>
                 )}
                 <button className="btn btn-ghost" style={{ fontSize:'12px', padding:'4px 10px' }} onClick={() => setEditingNote(null)}>Cancel</button>
               </div>
@@ -308,9 +310,8 @@ export default function FactionProfile({ session }) {
           )}
         </div>
 
-        {/* Activity column */}
+        {/* Activity */}
         <div style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
-          {/* Recent Raids */}
           <div className="card" style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
             <h3 style={{ fontWeight:700, fontSize:'15px', display:'flex', alignItems:'center', gap:'8px' }}>
               <Sword size={15} color="var(--red)" /> Recent Raids
@@ -327,7 +328,6 @@ export default function FactionProfile({ session }) {
             ))}
           </div>
 
-          {/* Recent Events */}
           <div className="card" style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
             <h3 style={{ fontWeight:700, fontSize:'15px', display:'flex', alignItems:'center', gap:'8px' }}>
               <Star size={15} color="var(--yellow)" /> Recent Activity
@@ -343,7 +343,7 @@ export default function FactionProfile({ session }) {
         </div>
       </div>
 
-      {/* Name History — leader only */}
+      {/* Name History */}
       {canManage && (
         <div className="card">
           <button
