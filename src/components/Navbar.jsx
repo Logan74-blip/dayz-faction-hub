@@ -250,23 +250,21 @@ export default function Navbar({ session }) {
         {isMobile && <div style={{ flex:1 }} />}
 
         {/* Right side */}
-        <div style={{ display:'flex', alignItems:'center', gap:'8px', flexShrink:0 }}>
-          {/* Bell */}
-          <div ref={bellRef} style={{ position:'relative' }}>
-            <button onClick={() => { setShowBell(s => !s); setOpenGroup(null); setMobileOpen(false) }} style={{
-              background:'transparent', border:'none', color: unread > 0 ? 'var(--green)' : 'var(--muted)',
-              cursor:'pointer', padding:'6px', position:'relative', display:'flex', alignItems:'center'
-            }}>
-              <Bell size={17} />
-              {unread > 0 && (
-                <span style={{
-                  position:'absolute', top:'1px', right:'1px',
-                  background:'var(--red)', color:'#fff', borderRadius:'50%',
-                  width:'14px', height:'14px', fontSize:'9px', fontWeight:700,
-                  display:'flex', alignItems:'center', justifyContent:'center'
-                }}>{unread > 9 ? '9+' : unread}</span>
-              )}
-            </button>
+        <div style={{ display:'flex', flexDirection:'column', gap:'8px', padding:'12px', background:'var(--bg)', borderRadius:'8px', marginBottom:'8px' }}>
+  <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
+    {avatar
+      ? <img src={avatar} style={{ width:40, height:40, borderRadius:'50%', border:'1px solid var(--border)', flexShrink:0 }} />
+      : <div style={{ width:40, height:40, borderRadius:'50%', background:'var(--border)', flexShrink:0 }} />
+    }
+    <div style={{ flex:1 }}>
+      <div style={{ fontWeight:700, fontSize:'15px' }}>{name}</div>
+      <div style={{ fontSize:'12px', color:'var(--muted)' }}>Discord Account</div>
+    </div>
+  </div>
+  <button onClick={logout} className="btn btn-ghost" style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', fontSize:'13px', padding:'8px', color:'var(--red)', borderColor:'#b91c1c44', width:'100%' }}>
+    <LogOut size={14} /> Sign Out
+  </button>
+</div>
 
             {showBell && (
               <div style={{
