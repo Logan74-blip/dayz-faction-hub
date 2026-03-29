@@ -2,6 +2,15 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { useRole } from '../hooks/useRole'
 
+const FLAG_EMOJI_MAP = {
+  'none': null, 'skull': '💀', 'biohazard': '☢️', 'crossed_swords': '⚔️',
+  'shield': '🛡️', 'wolf': '🐺', 'eagle': '🦅', 'snake': '🐍',
+  'bear': '🐻', 'fire': '🔥', 'lightning': '⚡', 'crown': '👑',
+  'axe': '🪓', 'knife': '🔪', 'gun': '🔫', 'grenade': '💣',
+  'target': '🎯', 'ghost': '👻', 'demon': '👹', 'zombie': '🧟',
+  'military': '🪖', 'flag': '🚩', 'blood': '🩸', 'radiation': '☢️', 'virus': '🦠'
+}
+
 const DAYZ_FLAGS = [
   { id:'none', label:'None', emoji:'' },
   { id:'skull', label:'Skull', emoji:'💀' },
@@ -52,7 +61,7 @@ export default function Customize({ session }) {
   const canEdit = role === 'leader' || role === 'co-leader'
 
   useEffect(() => {
-    if (faction) {
+    if (faction?.id) {
       loadCustomization()
       loadApiKeys()
       checkPush()
@@ -65,13 +74,13 @@ export default function Customize({ session }) {
       .select('*')
       .eq('faction_id', faction.id)
       .maybeSingle()
-    if (data) setCustomization(data)
-    else {
-      // Load from factions table directly
+    if (data) {
+      setCustomization(data)
+    } else {
       setCustomization(c => ({
         ...c,
         primary_color: faction.primary_color || '#4ade80',
-        flag: faction.flag || 'none'
+        flag: 'none'
       }))
     }
   }
@@ -90,41 +99,35 @@ export default function Customize({ session }) {
   }
 
   async function saveCustomization() {
-  const FLAG_EMOJI_MAP = {
-    'none': null, 'skull': '💀', 'biohazard': '☢️', 'crossed_swords': '⚔️',
-    'shield': '🛡️', 'wolf': '🐺', 'eagle': '🦅', 'snake': '🐍',
-    'bear': '🐻', 'fire': '🔥', 'lightning': '⚡', 'crown': '👑',
-    'axe': '🪓', 'knife': '🔪', 'gun': '🔫', 'grenade': '💣',
-    'target': '🎯', 'ghost': '👻', 'demon': '👹', 'zombie': '🧟',
-    'military': '🪖', 'flag': '🚩', 'blood': '🩸', 'radiation': '☢️', 'virus': '🦠'
-  }
-  const flagEmoji = FLAG_EMOJI_MAP[customization.flag] || null
-  const { data: existing } = await supabase
-    .from('faction_customization')
-    .select('id')
-    .eq('faction_id', faction.id)
-    .maybeSingle()
-  if (existing) {
-    await supabase.from('faction_customization')
-      .update({ ...customization, updated_at: new Date().toISOString() })
-      .eq('faction_id', faction.id)
-  } else {
-    await supabase.from('faction_customization')
-      .insert({ ...customization, faction_id: faction.id })
-  }
-  await supabase.from('factions').update({
-    primary_color: customization.primary_color,
-    flag: flagEmoji
-  }).eq('id', faction.id)
-  setSaved(true)
-  setTimeout(() => setSaved(false), 2000)
-}
+    // Convert flag ID to actual emoji for storage
+    const flagEmoji = FLAG_EMOJI_MAP[customization.flag] || null
 
-    // Store EMOJI in factions table, not the ID
-    await supabase.from('factions').update({
+    // Save to faction_customization table
+    const { data: existing } = await supabase
+      .from('faction_customization')
+      .select('id')
+      .eq('faction_id', faction.id)
+      .maybeSingle()
+
+    if (existing) {
+      await supabase.from('faction_customization')
+        .update({ ...customization, updated_at: new Date().toISOString() })
+        .eq('faction_id', faction.id)
+    } else {
+      await supabase.from('faction_customization')
+        .insert({ ...customization, faction_id: faction.id })
+    }
+
+    // Save EMOJI (not ID) to factions table so it shows everywhere
+    const { error } = await supabase.from('factions').update({
       primary_color: customization.primary_color,
       flag: flagEmoji
     }).eq('id', faction.id)
+
+    if (error) {
+      alert('Failed to save: ' + error.message)
+      return
+    }
 
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
@@ -177,11 +180,7 @@ export default function Customize({ session }) {
     }
   }
 
-  // Find selected flag — check both by ID and by emoji value
-  const selectedFlag = DAYZ_FLAGS.find(f =>
-    f.id === (customization.flag || 'none') ||
-    f.emoji === customization.flag
-  ) || DAYZ_FLAGS[0]
+  const selectedFlag = DAYZ_FLAGS.find(f => f.id === (customization.flag || 'none')) || DAYZ_FLAGS[0]
 
   if (!faction) return (
     <div style={{ padding:'80px', textAlign:'center', color:'var(--muted)' }}>
@@ -203,7 +202,7 @@ export default function Customize({ session }) {
           <div style={{ fontFamily:'Share Tech Mono', fontSize:'22px', color:customization.primary_color }}>
             {faction?.name || 'YOUR FACTION'}
           </div>
-          <div style={{ fontSize:'13px', color:'var(--muted)', marginTop:'4px' }}>Preview of your faction's appearance</div>
+          <div style={{ fontSize:'13px', color:'var(--muted)', marginTop:'4px' }}>Preview of your faction appearance</div>
           <div style={{ display:'flex', gap:'8px', marginTop:'8px' }}>
             <div style={{ width:'24px', height:'24px', borderRadius:'4px', background:customization.primary_color }} />
             <div style={{ width:'24px', height:'24px', borderRadius:'4px', background:customization.secondary_color }} />
@@ -263,7 +262,7 @@ export default function Customize({ session }) {
                   onClick={() => setCustomization(c => ({...c, flag:flag.id}))}
                   style={{
                     background:'var(--surface)',
-                    border:`2px solid ${(customization.flag === flag.id || customization.flag === flag.emoji) ? customization.primary_color : 'var(--border)'}`,
+                    border:`2px solid ${customization.flag === flag.id ? customization.primary_color : 'var(--border)'}`,
                     borderRadius:'8px', padding:'10px 6px', cursor:'pointer',
                     display:'flex', flexDirection:'column', alignItems:'center', gap:'4px',
                     transition:'border-color 0.15s'
