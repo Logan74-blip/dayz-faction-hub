@@ -68,7 +68,7 @@ export default function Navbar({ session }) {
   const [openGroup, setOpenGroup] = useState(null)
   const [unreadMessages, setUnreadMessages] = useState(0)
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [mobileExpanded, setMobileExpanded] = useState(null)
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768)
   const bellRef = useRef(null)
   const navRef = useRef(null)
   const userId = session.user.id
@@ -85,6 +85,12 @@ export default function Navbar({ session }) {
   }, [])
 
   useEffect(() => {
+    function handleResize() { setIsMobile(window.innerWidth <= 768) }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  useEffect(() => {
     function handleClick(e) {
       if (!bellRef.current?.contains(e.target) && !navRef.current?.contains(e.target)) {
         setShowBell(false)
@@ -95,7 +101,15 @@ export default function Navbar({ session }) {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  useEffect(() => { setOpenGroup(null); setMobileOpen(false) }, [location])
+  useEffect(() => {
+    setOpenGroup(null)
+    setMobileOpen(false)
+  }, [location])
+
+  useEffect(() => {
+    document.body.style.overflow = mobileOpen ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [mobileOpen])
 
   async function saveProfile() {
     const meta = session.user.user_metadata
@@ -147,87 +161,99 @@ export default function Navbar({ session }) {
       <nav ref={navRef} style={{
         background:'var(--surface)', borderBottom:'1px solid var(--border)',
         display:'flex', alignItems:'center', padding:'0 16px',
-        height:'56px', position:'sticky', top:0, zIndex:100, gap:'4px'
+        height:'56px', position:'sticky', top:0, zIndex:100, gap:'2px'
       }}>
         {/* Logo */}
-        <span onClick={() => navigate('/')} style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'15px', marginRight:'8px', letterSpacing:'0.1em', whiteSpace:'nowrap', cursor:'pointer', flexShrink:0 }}>
+        <span onClick={() => navigate('/')} style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'15px', marginRight:'12px', letterSpacing:'0.1em', whiteSpace:'nowrap', cursor:'pointer', flexShrink:0 }}>
           ☢️ FACTION HUB
         </span>
 
-        {/* Desktop nav groups */}
-        <div className="desktop-nav-groups" style={{ display:'flex', gap:'2px', flex:1, overflow:'hidden' }}>
-          {NAV_GROUPS.map(group => {
-            const active = isGroupActive(group)
-            const Icon = group.icon
-            const isOpen = openGroup === group.label
+        {/* Desktop nav — hidden on mobile */}
+        {!isMobile && (
+          <div style={{ display:'flex', gap:'2px', flex:1 }}>
+            {NAV_GROUPS.map(group => {
+              const active = isGroupActive(group)
+              const Icon = group.icon
+              const isOpen = openGroup === group.label
 
-            if (group.single) {
+              if (group.single) {
+                return (
+                  <NavLink key={group.to} to={group.to} end style={({ isActive }) => ({
+                    display:'flex', alignItems:'center', gap:'5px', padding:'6px 10px',
+                    borderRadius:'4px', fontSize:'12px', fontWeight:600, textDecoration:'none',
+                    color: isActive ? 'var(--green)' : 'var(--muted)',
+                    background: isActive ? '#14532d33' : 'transparent', whiteSpace:'nowrap'
+                  })}>
+                    <Icon size={13} /> {group.label}
+                  </NavLink>
+                )
+              }
+
               return (
-                <NavLink key={group.to} to={group.to} end style={({ isActive }) => ({
-                  display:'flex', alignItems:'center', gap:'5px', padding:'6px 10px',
-                  borderRadius:'4px', fontSize:'12px', fontWeight:600, textDecoration:'none',
-                  color: isActive ? 'var(--green)' : 'var(--muted)',
-                  background: isActive ? '#14532d33' : 'transparent', whiteSpace:'nowrap'
-                })}>
-                  <Icon size={13} /> {group.label}
-                </NavLink>
-              )
-            }
+                <div key={group.label} style={{ position:'relative' }}>
+                  <button
+                    onClick={() => setOpenGroup(isOpen ? null : group.label)}
+                    style={{
+                      display:'flex', alignItems:'center', gap:'5px', padding:'6px 10px',
+                      borderRadius:'4px', fontSize:'12px', fontWeight:600, cursor:'pointer',
+                      color: active || isOpen ? 'var(--green)' : 'var(--muted)',
+                      background: active || isOpen ? '#14532d33' : 'transparent',
+                      border:'none', whiteSpace:'nowrap', transition:'all 0.15s'
+                    }}
+                  >
+                    <Icon size={13} />
+                    {group.label}
+                    {group.label === 'Diplomacy' && unreadMessages > 0 && (
+                      <span style={{ background:'var(--red)', color:'#fff', borderRadius:'999px', fontSize:'9px', padding:'1px 5px', fontWeight:700 }}>
+                        {unreadMessages}
+                      </span>
+                    )}
+                    <ChevronDown size={11} style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition:'transform 0.15s' }} />
+                  </button>
 
-            return (
-              <div key={group.label} style={{ position:'relative' }}>
-                <button onClick={() => setOpenGroup(isOpen ? null : group.label)} style={{
-                  display:'flex', alignItems:'center', gap:'5px', padding:'6px 10px',
-                  borderRadius:'4px', fontSize:'12px', fontWeight:600, cursor:'pointer',
-                  color: active || isOpen ? 'var(--green)' : 'var(--muted)',
-                  background: active || isOpen ? '#14532d33' : 'transparent',
-                  border:'none', whiteSpace:'nowrap', transition:'all 0.15s'
-                }}>
-                  <Icon size={13} />
-                  {group.label}
-                  {group.label === 'Diplomacy' && unreadMessages > 0 && (
-                    <span style={{ background:'var(--red)', color:'#fff', borderRadius:'999px', fontSize:'9px', padding:'1px 5px', fontWeight:700 }}>{unreadMessages}</span>
+                  {isOpen && (
+                    <div style={{
+                      position:'absolute', top:'calc(100% + 4px)', left:0,
+                      background:'var(--surface)', border:'1px solid var(--border)',
+                      borderRadius:'8px', zIndex:200, minWidth:'180px',
+                      boxShadow:'0 8px 32px #00000088', padding:'6px',
+                      display:'flex', flexDirection:'column', gap:'2px'
+                    }}>
+                      {group.children.map(({ to, label, icon: CIcon }) => (
+                        <NavLink key={to} to={to} style={({ isActive }) => ({
+                          display:'flex', alignItems:'center', gap:'8px', padding:'8px 12px',
+                          borderRadius:'6px', fontSize:'13px', fontWeight:600, textDecoration:'none',
+                          color: isActive ? 'var(--green)' : 'var(--text)',
+                          background: isActive ? '#14532d33' : 'transparent',
+                        })}
+                          onMouseEnter={e => e.currentTarget.style.background = '#1a2e1a'}
+                          onMouseLeave={e => e.currentTarget.style.background = ''}
+                        >
+                          <CIcon size={14} />
+                          {label}
+                          {label === 'Messages' && unreadMessages > 0 && (
+                            <span style={{ background:'var(--red)', color:'#fff', borderRadius:'999px', fontSize:'9px', padding:'1px 5px', marginLeft:'auto' }}>
+                              {unreadMessages}
+                            </span>
+                          )}
+                        </NavLink>
+                      ))}
+                    </div>
                   )}
-                  <ChevronDown size={11} style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition:'transform 0.15s' }} />
-                </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
 
-                {isOpen && (
-                  <div style={{
-                    position:'absolute', top:'calc(100% + 4px)', left:0,
-                    background:'var(--surface)', border:'1px solid var(--border)',
-                    borderRadius:'8px', zIndex:200, minWidth:'180px',
-                    boxShadow:'0 8px 32px #00000088', padding:'6px',
-                    display:'flex', flexDirection:'column', gap:'2px'
-                  }}>
-                    {group.children.map(({ to, label, icon: CIcon }) => (
-                      <NavLink key={to} to={to} style={({ isActive }) => ({
-                        display:'flex', alignItems:'center', gap:'8px', padding:'8px 12px',
-                        borderRadius:'6px', fontSize:'13px', fontWeight:600, textDecoration:'none',
-                        color: isActive ? 'var(--green)' : 'var(--text)',
-                        background: isActive ? '#14532d33' : 'transparent',
-                      })}
-                        onMouseEnter={e => e.currentTarget.style.background = '#1a2e1a'}
-                        onMouseLeave={e => e.currentTarget.style.background = ''}
-                      >
-                        <CIcon size={14} />
-                        {label}
-                        {label === 'Messages' && unreadMessages > 0 && (
-                          <span style={{ background:'var(--red)', color:'#fff', borderRadius:'999px', fontSize:'9px', padding:'1px 5px', marginLeft:'auto' }}>{unreadMessages}</span>
-                        )}
-                      </NavLink>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
+        {/* Spacer on mobile */}
+        {isMobile && <div style={{ flex:1 }} />}
 
         {/* Right side */}
-        <div style={{ display:'flex', alignItems:'center', gap:'8px', flexShrink:0, marginLeft:'auto' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:'8px', flexShrink:0 }}>
           {/* Bell */}
           <div ref={bellRef} style={{ position:'relative' }}>
-            <button onClick={() => { setShowBell(s => !s); setOpenGroup(null) }} style={{
+            <button onClick={() => { setShowBell(s => !s); setOpenGroup(null); setMobileOpen(false) }} style={{
               background:'transparent', border:'none', color: unread > 0 ? 'var(--green)' : 'var(--muted)',
               cursor:'pointer', padding:'6px', position:'relative', display:'flex', alignItems:'center'
             }}>
@@ -254,7 +280,9 @@ export default function Navbar({ session }) {
                   {unread > 0 && <button onClick={markAllRead} style={{ background:'transparent', border:'none', color:'var(--muted)', cursor:'pointer', fontSize:'11px' }}>Mark all read</button>}
                 </div>
                 <div style={{ overflowY:'auto', flex:1 }}>
-                  {notifications.length === 0 && <p style={{ padding:'20px', textAlign:'center', color:'var(--muted)', fontSize:'13px' }}>No notifications yet</p>}
+                  {notifications.length === 0 && (
+                    <p style={{ padding:'20px', textAlign:'center', color:'var(--muted)', fontSize:'13px' }}>No notifications yet</p>
+                  )}
                   {notifications.map(n => (
                     <div key={n.id} onClick={() => markRead(n.id)} style={{
                       padding:'10px 14px', borderBottom:'1px solid var(--border)', cursor:'pointer',
@@ -275,123 +303,86 @@ export default function Navbar({ session }) {
             )}
           </div>
 
-          {/* Avatar — hide on very small screens */}
-          {avatar && <img src={avatar} style={{ width:26, height:26, borderRadius:'50%', border:'1px solid var(--border)', flexShrink:0 }} className="hide-mobile" />}
+          {/* Desktop user info */}
+          {!isMobile && (
+            <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+              {avatar && <img src={avatar} style={{ width:26, height:26, borderRadius:'50%', border:'1px solid var(--border)', flexShrink:0 }} />}
+              <span style={{ fontSize:'11px', color:'var(--muted)', whiteSpace:'nowrap', maxWidth:'80px', overflow:'hidden', textOverflow:'ellipsis' }}>{name}</span>
+              <button onClick={logout} className="btn btn-ghost" style={{ display:'flex', alignItems:'center', gap:'4px', fontSize:'11px', padding:'4px 8px', flexShrink:0 }}>
+                <LogOut size={12} /> Out
+              </button>
+            </div>
+          )}
 
-          {/* Logout — hide text on mobile */}
-          <button onClick={logout} className="btn btn-ghost" style={{ display:'flex', alignItems:'center', gap:'4px', fontSize:'11px', padding:'4px 8px', flexShrink:0 }}>
-            <LogOut size={12} /> <span className="hide-mobile">Out</span>
-          </button>
-
-          {/* Hamburger — mobile only */}
-          <button className="mobile-menu-btn" onClick={() => setMobileOpen(true)} style={{ display:'none' }}>
-            <Menu size={22} />
-          </button>
+          {/* Mobile hamburger */}
+          {isMobile && (
+            <button
+              onClick={() => { setMobileOpen(o => !o); setShowBell(false); setOpenGroup(null) }}
+              style={{ background:'transparent', border:'none', color:'var(--text)', padding:'6px', display:'flex', alignItems:'center', cursor:'pointer' }}
+            >
+              {mobileOpen ? <X size={22} /> : <Menu size={22} />}
+            </button>
+          )}
         </div>
       </nav>
 
-      {/* Mobile drawer overlay */}
-      {mobileOpen && (
-        <div
-          style={{ position:'fixed', inset:0, background:'#00000088', zIndex:150 }}
-          onClick={() => setMobileOpen(false)}
-        />
-      )}
-
-      {/* Mobile drawer */}
-      {mobileOpen && (
+      {/* Mobile Menu */}
+      {isMobile && mobileOpen && (
         <div style={{
-          position:'fixed', top:0, left:0, bottom:0, width:'280px',
-          background:'var(--surface)', borderRight:'1px solid var(--border)',
-          zIndex:200, overflowY:'auto', display:'flex', flexDirection:'column'
+          position:'fixed', top:'56px', left:0, right:0, bottom:0,
+          background:'var(--surface)', zIndex:99, overflowY:'auto',
+          padding:'16px', display:'flex', flexDirection:'column', gap:'4px',
+          borderTop:'1px solid var(--border)'
         }}>
-          {/* Drawer header */}
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px', borderBottom:'1px solid var(--border)' }}>
-            <span style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'15px' }}>☢️ FACTION HUB</span>
-            <button onClick={() => setMobileOpen(false)} style={{ background:'transparent', border:'none', color:'var(--muted)', cursor:'pointer', padding:'4px' }}>
-              <X size={18} />
-            </button>
-          </div>
-
           {/* User info */}
-          <div style={{ display:'flex', alignItems:'center', gap:'10px', padding:'12px 16px', borderBottom:'1px solid var(--border)' }}>
-            {avatar && <img src={avatar} style={{ width:32, height:32, borderRadius:'50%', border:'1px solid var(--border)' }} />}
-            <span style={{ fontSize:'13px', fontWeight:600, color:'var(--text)' }}>{name}</span>
-          </div>
-
-          {/* Nav items */}
-          <div style={{ flex:1, padding:'8px 0' }}>
-            {NAV_GROUPS.map(group => {
-              const Icon = group.icon
-              const isExpanded = mobileExpanded === group.label
-
-              if (group.single) {
-                return (
-                  <NavLink key={group.to} to={group.to} end
-                    style={({ isActive }) => ({
-                      display:'flex', alignItems:'center', gap:'12px',
-                      padding:'12px 16px', textDecoration:'none', fontSize:'15px', fontWeight:600,
-                      color: isActive ? 'var(--green)' : 'var(--text)',
-                      background: isActive ? '#14532d33' : 'transparent',
-                      borderLeft: isActive ? '3px solid var(--green)' : '3px solid transparent'
-                    })}
-                  >
-                    <Icon size={16} /> {group.label}
-                  </NavLink>
-                )
-              }
-
-              return (
-                <div key={group.label}>
-                  <button
-                    onClick={() => setMobileExpanded(isExpanded ? null : group.label)}
-                    style={{
-                      display:'flex', alignItems:'center', gap:'12px', width:'100%',
-                      padding:'12px 16px', background:'transparent', border:'none',
-                      color:'var(--text)', fontSize:'15px', fontWeight:600, cursor:'pointer',
-                      borderLeft:'3px solid transparent'
-                    }}
-                  >
-                    <Icon size={16} />
-                    <span style={{ flex:1, textAlign:'left' }}>{group.label}</span>
-                    {group.label === 'Diplomacy' && unreadMessages > 0 && (
-                      <span style={{ background:'var(--red)', color:'#fff', borderRadius:'999px', fontSize:'10px', padding:'1px 6px' }}>{unreadMessages}</span>
-                    )}
-                    <ChevronDown size={14} style={{ transform: isExpanded ? 'rotate(180deg)' : 'none', transition:'transform 0.2s' }} />
-                  </button>
-
-                  {isExpanded && (
-                    <div style={{ background:'#0a0c0a', borderTop:'1px solid var(--border)', borderBottom:'1px solid var(--border)' }}>
-                      {group.children.map(({ to, label, icon: CIcon }) => (
-                        <NavLink key={to} to={to}
-                          style={({ isActive }) => ({
-                            display:'flex', alignItems:'center', gap:'12px',
-                            padding:'10px 16px 10px 40px', textDecoration:'none',
-                            fontSize:'14px', fontWeight:600,
-                            color: isActive ? 'var(--green)' : 'var(--muted)',
-                            background: isActive ? '#14532d22' : 'transparent',
-                          })}
-                        >
-                          <CIcon size={14} />
-                          {label}
-                          {label === 'Messages' && unreadMessages > 0 && (
-                            <span style={{ background:'var(--red)', color:'#fff', borderRadius:'999px', fontSize:'9px', padding:'1px 5px', marginLeft:'auto' }}>{unreadMessages}</span>
-                          )}
-                        </NavLink>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Logout */}
-          <div style={{ padding:'16px', borderTop:'1px solid var(--border)' }}>
-            <button onClick={logout} className="btn btn-ghost" style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px' }}>
-              <LogOut size={14} /> Sign Out
+          <div style={{ display:'flex', alignItems:'center', gap:'12px', padding:'12px', background:'var(--bg)', borderRadius:'8px', marginBottom:'8px' }}>
+            {avatar
+              ? <img src={avatar} style={{ width:36, height:36, borderRadius:'50%', border:'1px solid var(--border)', flexShrink:0 }} />
+              : <div style={{ width:36, height:36, borderRadius:'50%', background:'var(--border)', flexShrink:0 }} />
+            }
+            <span style={{ fontWeight:600, fontSize:'15px', flex:1 }}>{name}</span>
+            <button onClick={logout} className="btn btn-ghost" style={{ display:'flex', alignItems:'center', gap:'4px', fontSize:'12px', padding:'5px 10px' }}>
+              <LogOut size={12} /> Logout
             </button>
           </div>
+
+          {NAV_GROUPS.map(group => {
+            if (group.single) {
+              return (
+                <NavLink key={group.to} to={group.to} end style={({ isActive }) => ({
+                  display:'flex', alignItems:'center', gap:'10px', padding:'10px 12px',
+                  borderRadius:'6px', color: isActive ? 'var(--green)' : 'var(--text)',
+                  background: isActive ? '#14532d33' : 'transparent',
+                  fontSize:'15px', fontWeight:600, textDecoration:'none'
+                })}>
+                  <group.icon size={16} /> {group.label}
+                </NavLink>
+              )
+            }
+            return (
+              <div key={group.label}>
+                <div style={{ fontFamily:'Share Tech Mono', fontSize:'11px', color:'var(--muted)', letterSpacing:'0.1em', padding:'10px 8px 4px', borderTop:'1px solid var(--border)', marginTop:'6px' }}>
+                  {group.label}
+                </div>
+                {group.children.map(({ to, label, icon: CIcon }) => (
+                  <NavLink key={to} to={to} style={({ isActive }) => ({
+                    display:'flex', alignItems:'center', gap:'10px', padding:'10px 12px',
+                    borderRadius:'6px', color: isActive ? 'var(--green)' : 'var(--text)',
+                    background: isActive ? '#14532d33' : 'transparent',
+                    fontSize:'15px', fontWeight:600, textDecoration:'none'
+                  })}>
+                    <CIcon size={16} />
+                    {label}
+                    {label === 'Messages' && unreadMessages > 0 && (
+                      <span style={{ background:'var(--red)', color:'#fff', borderRadius:'999px', fontSize:'10px', padding:'1px 6px', marginLeft:'auto' }}>
+                        {unreadMessages}
+                      </span>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
+            )
+          })}
         </div>
       )}
     </>
