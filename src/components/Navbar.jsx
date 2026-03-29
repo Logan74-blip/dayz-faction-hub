@@ -5,7 +5,8 @@ import { LayoutDashboard, Map, Sword, ShoppingBag, Shield, Globe, Settings, Bell
 
 const NAV_GROUPS = [
   { label:'Home', icon:LayoutDashboard, to:'/', single:true },
-  {
+  {  label:'Hub', icon:Megaphone, to:'/hub', single:true },
+  
     label:'Operations', icon:Sword,
     children:[
       { to:'/raids', label:'Raids', icon:Sword },

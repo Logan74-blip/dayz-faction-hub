@@ -2,6 +2,8 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { supabase } from './supabaseClient'
 import Login from './pages/Login'
+import Welcome from './pages/Welcome'
+import Onboarding from './pages/Onboarding'
 import Dashboard from './pages/Dashboard'
 import WarMap from './pages/WarMap'
 import Resources from './pages/Resources'
@@ -30,30 +32,60 @@ import Customize from './pages/Customize'
 import Navbar from './components/Navbar'
 import ProtectedRoute from './components/ProtectedRoute'
 import ActivityTracker from './components/ActivityTracker'
+import HubAnnouncements from './pages/HubAnnouncements'
 
 export default function App() {
   const [session, setSession] = useState(undefined)
+  const [profile, setProfile] = useState(null)
+  const [checkingProfile, setCheckingProfile] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
+      setSession(s)
+      if (s) loadProfile(s.user.id)
+    })
     return () => subscription.unsubscribe()
   }, [])
 
-  if (session === undefined) return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', color:'var(--green)', fontFamily:'Share Tech Mono' }}>
-      LOADING FACTION HUB...
+  async function loadProfile(userId) {
+    setCheckingProfile(true)
+    const { data } = await supabase.from('profiles').select('onboarding_done').eq('id', userId).maybeSingle()
+    setProfile(data)
+    setCheckingProfile(false)
+  }
+
+  if (session === undefined || (session && checkingProfile)) return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', color:'var(--green)', fontFamily:'Share Tech Mono', flexDirection:'column', gap:'16px' }}>
+      <div style={{ fontSize:'32px' }}>☢️</div>
+      <div>LOADING FACTION HUB...</div>
     </div>
   )
 
+  // New user who hasn't done onboarding
+  const needsOnboarding = session && profile && !profile.onboarding_done
+
   return (
     <>
-      {session && <Navbar session={session} />}
-      {session && <ActivityTracker session={session} />}
+      {session && !needsOnboarding && <Navbar session={session} />}
+      {session && !needsOnboarding && <ActivityTracker session={session} />}
       <Routes>
+        {/* Public routes */}
+        <Route path="/welcome" element={!session ? <Welcome /> : <Navigate to="/" />} />
         <Route path="/login" element={!session ? <Login /> : <Navigate to="/" />} />
         <Route path="/invite/:code" element={<Invite session={session} />} />
-        <Route path="/" element={<ProtectedRoute session={session}><Dashboard session={session} /></ProtectedRoute>} />
+
+        {/* Onboarding */}
+        <Route path="/onboarding" element={session ? <Onboarding session={session} /> : <Navigate to="/welcome" />} />
+
+        {/* Redirect to welcome if not logged in */}
+        <Route path="/" element={
+          !session ? <Navigate to="/welcome" /> :
+          needsOnboarding ? <Navigate to="/onboarding" /> :
+          <ProtectedRoute session={session}><Dashboard session={session} /></ProtectedRoute>
+        } />
+
+        {/* Protected routes */}
         <Route path="/map" element={<ProtectedRoute session={session}><WarMap session={session} /></ProtectedRoute>} />
         <Route path="/resources" element={<ProtectedRoute session={session}><Resources session={session} /></ProtectedRoute>} />
         <Route path="/diplomacy" element={<ProtectedRoute session={session}><Diplomacy session={session} /></ProtectedRoute>} />
@@ -77,6 +109,7 @@ export default function App() {
         <Route path="/treasury" element={<ProtectedRoute session={session}><Treasury session={session} /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute session={session}><AdminDashboard session={session} /></ProtectedRoute>} />
         <Route path="/customize" element={<ProtectedRoute session={session}><Customize session={session} /></ProtectedRoute>} />
+        <Route path="/hub" element={<ProtectedRoute session={session}><HubAnnouncements session={session} /></ProtectedRoute>} />
       </Routes>
     </>
   )
