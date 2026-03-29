@@ -206,10 +206,24 @@ const [deleteConfirmName, setDeleteConfirmName] = useState('')
   }
 
   async function copyInvite() {
-    const url = `${window.location.origin}/invite/${invite.code}`
+  const url = `${window.location.origin}/invite/${invite.code}`
+  try {
     await navigator.clipboard.writeText(url)
-    alert('Invite link copied!')
+    alert('Invite link copied: ' + url)
+  } catch {
+    // Fallback for mobile browsers that block clipboard
+    const el = document.createElement('textarea')
+    el.value = url
+    el.style.position = 'fixed'
+    el.style.opacity = '0'
+    document.body.appendChild(el)
+    el.focus()
+    el.select()
+    document.execCommand('copy')
+    document.body.removeChild(el)
+    alert('Invite link copied: ' + url)
   }
+}
 
   async function kickMember(userIdToKick) {
     if (!window.confirm('Remove this member from the faction?')) return
