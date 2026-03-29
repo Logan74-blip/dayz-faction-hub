@@ -90,27 +90,36 @@ export default function Customize({ session }) {
   }
 
   async function saveCustomization() {
-    // Get the actual emoji to store
-    const selectedFlag = DAYZ_FLAGS.find(f => f.id === (customization.flag || 'none'))
-    const flagEmoji = selectedFlag?.emoji || ''
+  const selectedFlag = DAYZ_FLAGS.find(f => f.id === (customization.flag || 'none'))
+  const flagEmoji = selectedFlag?.emoji || null
 
-    const { data: existing } = await supabase
-      .from('faction_customization')
-      .select('id')
-      .eq('faction_id', faction.id)
-      .maybeSingle()
+  const { data: existing } = await supabase
+    .from('faction_customization')
+    .select('id')
+    .eq('faction_id', faction.id)
+    .maybeSingle()
 
-    if (existing) {
-      await supabase.from('faction_customization').update({
-        ...customization,
-        updated_at: new Date().toISOString()
-      }).eq('faction_id', faction.id)
-    } else {
-      await supabase.from('faction_customization').insert({
-        ...customization,
-        faction_id: faction.id
-      })
-    }
+  if (existing) {
+    await supabase.from('faction_customization').update({
+      ...customization,
+      updated_at: new Date().toISOString()
+    }).eq('faction_id', faction.id)
+  } else {
+    await supabase.from('faction_customization').insert({
+      ...customization,
+      faction_id: faction.id
+    })
+  }
+
+  // Save EMOJI to factions table, not the ID
+  await supabase.from('factions').update({
+    primary_color: customization.primary_color,
+    flag: flagEmoji
+  }).eq('id', faction.id)
+
+  setSaved(true)
+  setTimeout(() => setSaved(false), 2000)
+}
 
     // Store EMOJI in factions table, not the ID
     await supabase.from('factions').update({
