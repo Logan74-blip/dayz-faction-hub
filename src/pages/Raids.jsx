@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { useRole } from '../hooks/useRole'
 import { Plus, Trash2, MapPin, Calendar, Users } from 'lucide-react'
+import { sendWebhookNotification } from './Settings'
 
 export default function Raids({ session }) {
   const { role, faction } = useRole(session.user.id)
@@ -88,15 +89,44 @@ export default function Raids({ session }) {
   }
 
   async function toggleRsvp(raidId) {
-    const existing = rsvps[raidId]?.find(r => r.user_id === userId)
-    if (existing) {
-      await supabase.from('raid_rsvps').delete().eq('id', existing.id)
-      setRsvps(r => ({ ...r, [raidId]: r[raidId].filter(x => x.user_id !== userId) }))
-    } else {
-      const { data } = await supabase.from('raid_rsvps').insert({ raid_id: raidId, user_id: userId, status: 'going' }).select().single()
-      setRsvps(r => ({ ...r, [raidId]: [...(r[raidId] || []), data] }))
+  const existing = rsvps[raidId]?.find(r => r.user_id === userId)
+  if (existing) {
+    await supabase.from('raid_rsvps').delete().eq('id', existing.id)
+    setRsvps(r => ({ ...r, [raidId]: r[raidId].filter(x => x.user_id !== userId) }))
+  } else {
+    const { data } = await supabase.from('raid_rsvps').insert({ raid_id: raidId, user_id: userId, status: 'going' }).select().single()
+    setRsvps(r => ({ ...r, [raidId]: [...(r[raidId] || []), data] }))
+    // Notify faction leaders when someone RSVPs
+    const raid = raids.find(r => r.id === raidId)
+    if (raid && faction) {
+      const { data: profile } = await supabase.from('profiles').select('discord_username').eq('id', userId).single()
+      const username = profile?.discord_username || 'A member'
+      // Notify leaders and co-leaders
+      const { data: leaders } = await supabase.from('faction_members').select('user_id').eq('faction_id', faction.id).in('role', ['leader', 'co-leader'])
+      if (leaders?.length) {
+        await supabase.from('notifications').insert(leaders.map(l => ({
+          faction_id: faction.id,
+          user_id: l.user_id,
+          type: 'raid',
+          title: `✅ ${username} is going on ${raid.title}`,
+          body: `${new Date(raid.scheduled_at).toLocaleString()}`
+        })))
+      }
+      // Send Discord webhook notification
+      await sendWebhookNotification(
+        faction.id, 'raid',
+        `✅ RSVP — ${raid.title}`,
+        [
+          { name: 'Member', value: username, inline: true },
+          { name: 'Operation', value: raid.title, inline: true },
+          { name: 'Time', value: new Date(raid.scheduled_at).toLocaleString(), inline: false },
+          { name: 'Total Going', value: `${(rsvps[raidId]?.length || 0) + 1}`, inline: true },
+        ],
+        0x4ade80
+      )
     }
   }
+}
 
   async function notifyDiscord(factionId, raid) {
     const { data: settings } = await supabase.from('notification_settings').select('webhook_url, notify_raids').eq('faction_id', factionId).maybeSingle()

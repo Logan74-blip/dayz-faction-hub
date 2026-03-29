@@ -2,24 +2,43 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { useRole } from '../hooks/useRole'
-import { Users, Map, Sword, Shield, Star, Edit2, Check, X, StickyNote } from 'lucide-react'
+import { Users, Map, Sword, Shield, Star, Edit2, Check, X, StickyNote, Trophy, Target, Copy } from 'lucide-react'
+
+const ROLE_ICONS = { leader:'👑', 'co-leader':'⭐', recruiter:'📋', member:'👤' }
+const ROLE_COLORS = { leader:'tag-green', 'co-leader':'tag-green', recruiter:'tag-yellow', member:'tag-yellow' }
+
+const ACHIEVEMENTS_META = {
+  first_raid: { label:'First Raid', icon:'⚔️' },
+  members_10: { label:'10 Members', icon:'👥' },
+  members_25: { label:'25 Members', icon:'👥' },
+  members_50: { label:'50 Members', icon:'👥' },
+  territories_5: { label:'5 Territories', icon:'🗺️' },
+  first_alliance: { label:'First Alliance', icon:'🤝' },
+  first_bounty: { label:'First Bounty', icon:'🎯' },
+  first_war_won: { label:'War Winner', icon:'🏆' },
+  raids_100: { label:'100 Raids', icon:'💀' },
+}
 
 export default function FactionProfile({ session }) {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { role, faction: myFaction, perms } = useRole(session.user.id)
+  const { role, faction: myFaction } = useRole(session.user.id)
   const [faction, setFaction] = useState(null)
   const [stats, setStats] = useState({})
   const [members, setMembers] = useState([])
   const [recentEvents, setRecentEvents] = useState([])
   const [recentRaids, setRecentRaids] = useState([])
+  const [achievements, setAchievements] = useState([])
   const [diplomacyStatus, setDiplomacyStatus] = useState(null)
   const [notes, setNotes] = useState({})
   const [editingNote, setEditingNote] = useState(null)
   const [noteText, setNoteText] = useState('')
   const [editingName, setEditingName] = useState(false)
   const [newName, setNewName] = useState('')
+  const [nameHistory, setNameHistory] = useState([])
+  const [showNameHistory, setShowNameHistory] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [copied, setCopied] = useState(false)
   const userId = session.user.id
   const isOwnFaction = myFaction?.id === id
   const canManage = isOwnFaction && (role === 'leader' || role === 'co-leader')
@@ -33,12 +52,13 @@ export default function FactionProfile({ session }) {
     setFaction(f)
     setNewName(f.name)
 
-    const [mems, territories, raids, pacts, events] = await Promise.all([
-      supabase.from('faction_members').select('*, profile:profiles(discord_username, discord_avatar)').eq('faction_id', id),
-      supabase.from('territories').select('id', { count:'exact' }).eq('faction_id', id),
+    const [mems, territories, raids, pacts, events, achvs] = await Promise.all([
+      supabase.from('faction_members').select('*, profile:profiles(discord_username, discord_avatar)').eq('faction_id', id).order('joined_at'),
+      supabase.from('territories').select('id', { count:'exact', head:true }).eq('faction_id', id),
       supabase.from('raids').select('*').eq('faction_id', id).order('scheduled_at', { ascending:false }).limit(5),
       supabase.from('diplomacy').select('*, faction_a_info:factions!diplomacy_faction_a_fkey(name), faction_b_info:factions!diplomacy_faction_b_fkey(name)').or(`faction_a.eq.${id},faction_b.eq.${id}`).eq('status', 'active'),
-      supabase.from('events').select('*').eq('faction_id', id).order('created_at', { ascending:false }).limit(5)
+      supabase.from('events').select('*').eq('faction_id', id).order('created_at', { ascending:false }).limit(6),
+      supabase.from('achievements').select('*').eq('faction_id', id)
     ])
 
     setMembers(mems.data || [])
@@ -46,12 +66,12 @@ export default function FactionProfile({ session }) {
       members: mems.data?.length || 0,
       territories: territories.count || 0,
       raids: raids.data?.length || 0,
-      pacts: pacts.data?.length || 0,
+      pacts: pacts.data?.filter(p => p.type === 'nap').length || 0,
     })
     setRecentRaids(raids.data || [])
     setRecentEvents(events.data || [])
+    setAchievements(achvs.data || [])
 
-    // Check diplomacy status between my faction and this one
     if (myFaction && !isOwnFaction) {
       const { data: diplo } = await supabase.from('diplomacy')
         .select('*')
@@ -61,8 +81,7 @@ export default function FactionProfile({ session }) {
       setDiplomacyStatus(diplo)
     }
 
-    // Load member notes if can manage
-    if (isOwnFaction && (role === 'leader' || role === 'co-leader')) {
+    if (canManage) {
       const { data: noteData } = await supabase.from('member_notes').select('*').eq('faction_id', id)
       const noteMap = {}
       noteData?.forEach(n => { noteMap[n.target_user_id] = n })
@@ -73,25 +92,21 @@ export default function FactionProfile({ session }) {
   }
 
   async function saveName() {
-  if (!newName.trim() || newName === faction.name) { setEditingName(false); return }
-  const oldName = faction.name
-  await supabase.from('factions').update({ name: newName.trim() }).eq('id', id)
-  await supabase.from('faction_name_history').insert({
-    faction_id: id,
-    old_name: oldName,
-    new_name: newName.trim(),
-    changed_by: session.user.id
-  })
-  await supabase.from('events').insert({
-    faction_id: id,
-    created_by: session.user.id,
-    type: 'custom',
-    title: `Faction renamed: ${oldName} → ${newName.trim()}`,
-    description: `Name changed by leadership`
-  })
-  setFaction(f => ({...f, name: newName.trim()}))
-  setEditingName(false)
-}
+    if (!newName.trim() || newName === faction.name) { setEditingName(false); return }
+    const oldName = faction.name
+    await supabase.from('factions').update({ name: newName.trim() }).eq('id', id)
+    await supabase.from('faction_name_history').insert({
+      faction_id: id, old_name: oldName,
+      new_name: newName.trim(), changed_by: userId
+    })
+    await supabase.from('events').insert({
+      faction_id: id, created_by: userId, type: 'custom',
+      title: `Faction renamed: ${oldName} → ${newName.trim()}`,
+      description: 'Name changed by leadership'
+    })
+    setFaction(f => ({...f, name: newName.trim()}))
+    setEditingName(false)
+  }
 
   async function saveNote(targetUserId) {
     const existing = notes[targetUserId]
@@ -109,64 +124,106 @@ export default function FactionProfile({ session }) {
     setNoteText('')
   }
 
-  async function deleteNote(targetUserId) {
-    const existing = notes[targetUserId]
-    if (existing) {
-      await supabase.from('member_notes').delete().eq('id', existing.id)
-      setNotes(n => { const copy = {...n}; delete copy[targetUserId]; return copy })
-    }
+  async function loadNameHistory() {
+    const { data } = await supabase.from('faction_name_history')
+      .select('*, profile:profiles!faction_name_history_changed_by_fkey(discord_username)')
+      .eq('faction_id', id)
+      .order('created_at', { ascending: false })
+    setNameHistory(data || [])
   }
 
-  const ROLE_ICONS = { leader:'👑', 'co-leader':'⭐', recruiter:'📋', member:'👤' }
-  const ROLE_COLORS = { leader:'tag-green', 'co-leader':'tag-green', recruiter:'tag-yellow', member:'tag-yellow' }
+  function copyLink() {
+    navigator.clipboard.writeText(`${window.location.origin}/faction/${id}`)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
-  const diploColor = diplomacyStatus?.type === 'nap' ? 'var(--green)' : diplomacyStatus?.type === 'war' ? 'var(--red)' : diplomacyStatus?.type === 'trade' ? 'var(--yellow)' : null
+  const diploColor = diplomacyStatus?.type === 'nap' ? 'var(--green)' : diplomacyStatus?.type === 'war' ? 'var(--red)' : 'var(--yellow)'
   const diploLabel = diplomacyStatus?.type === 'nap' ? '🤝 Allied' : diplomacyStatus?.type === 'war' ? '💀 At War' : diplomacyStatus?.type === 'trade' ? '🛒 Trade Partner' : null
+  const factionColor = faction?.primary_color || 'var(--green)'
 
-  if (loading) return <div style={{ padding:'80px', textAlign:'center', color:'var(--muted)', fontFamily:'Share Tech Mono' }}>LOADING FACTION DATA...</div>
+  if (loading) return (
+    <div style={{ padding:'80px', textAlign:'center', color:'var(--muted)', fontFamily:'Share Tech Mono' }}>
+      LOADING FACTION DATA...
+    </div>
+  )
+
   if (!faction) return null
 
   return (
-    <div style={{ maxWidth:900, margin:'40px auto', padding:'0 24px', display:'flex', flexDirection:'column', gap:'24px' }}>
+    <div style={{ maxWidth:900, margin:'40px auto', padding:'0 24px', display:'flex', flexDirection:'column', gap:'20px' }}>
 
-      {/* Header */}
-      <div className="card" style={{ display:'flex', alignItems:'center', gap:'20px', padding:'24px', borderLeft:'4px solid var(--green)' }}>
-        <div style={{ flex:1 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:'12px', flexWrap:'wrap' }}>
-            {faction.tag && <span style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'16px' }}>{faction.tag}</span>}
-            {editingName && canManage ? (
-              <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
-                <input value={newName} onChange={e => setNewName(e.target.value)} style={{ fontSize:'22px', fontWeight:700, width:'240px' }} onKeyDown={e => e.key==='Enter' && saveName()} autoFocus />
-                <button onClick={saveName} className="btn btn-green" style={{ padding:'4px 10px' }}><Check size={14} /></button>
-                <button onClick={() => setEditingName(false)} className="btn btn-ghost" style={{ padding:'4px 10px' }}><X size={14} /></button>
-              </div>
-            ) : (
-              <h1 style={{ fontFamily:'Share Tech Mono', fontSize:'28px', color:'var(--green)', margin:0 }}>{faction.name}</h1>
+      {/* Header card */}
+      <div className="card" style={{ borderLeft:`4px solid ${factionColor}`, padding:'24px' }}>
+        <div style={{ display:'flex', alignItems:'flex-start', gap:'16px', flexWrap:'wrap' }}>
+          {/* Flag */}
+          <div style={{ fontSize:'48px', flexShrink:0 }}>{faction.flag || '☢️'}</div>
+
+          <div style={{ flex:1, minWidth:'200px' }}>
+            {/* Name row */}
+            <div style={{ display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap', marginBottom:'6px' }}>
+              {faction.tag && (
+                <span style={{ fontFamily:'Share Tech Mono', color:factionColor, fontSize:'14px', border:`1px solid ${factionColor}44`, padding:'2px 8px', borderRadius:'4px' }}>
+                  {faction.tag}
+                </span>
+              )}
+              {editingName && canManage ? (
+                <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
+                  <input value={newName} onChange={e => setNewName(e.target.value)} style={{ fontSize:'20px', fontWeight:700, width:'220px' }} onKeyDown={e => e.key==='Enter' && saveName()} autoFocus />
+                  <button onClick={saveName} className="btn btn-green" style={{ padding:'4px 10px' }}><Check size={14} /></button>
+                  <button onClick={() => setEditingName(false)} className="btn btn-ghost" style={{ padding:'4px 10px' }}><X size={14} /></button>
+                </div>
+              ) : (
+                <h1 style={{ fontFamily:'Share Tech Mono', fontSize:'26px', color:factionColor, margin:0 }}>{faction.name}</h1>
+              )}
+              {canManage && !editingName && (
+                <button onClick={() => setEditingName(true)} className="btn btn-ghost" style={{ padding:'4px 8px' }}>
+                  <Edit2 size={13} color="var(--muted)" />
+                </button>
+              )}
+            </div>
+
+            {/* Badges */}
+            <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', marginBottom:'8px' }}>
+              {isOwnFaction && <span className="tag tag-green">Your Faction</span>}
+              {faction.is_recruiting && <span className="tag tag-yellow">🔎 Recruiting</span>}
+              {diploLabel && (
+                <span style={{ background:`${diploColor}22`, color:diploColor, padding:'2px 10px', borderRadius:'999px', fontSize:'12px', fontWeight:700 }}>
+                  {diploLabel}
+                </span>
+              )}
+              {achievements.length > 0 && (
+                <span style={{ background:'#78350f22', color:'var(--yellow)', padding:'2px 10px', borderRadius:'999px', fontSize:'12px', fontWeight:700 }}>
+                  🏆 {achievements.length} achievement{achievements.length !== 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+
+            {faction.server_name && (
+              <p style={{ color:'var(--muted)', fontSize:'13px', marginBottom:'6px' }}>📡 {faction.server_name}</p>
             )}
-            {canManage && !editingName && (
-              <button onClick={() => setEditingName(true)} className="btn btn-ghost" style={{ padding:'4px 8px' }}>
-                <Edit2 size={13} color="var(--muted)" />
-              </button>
+            {faction.description && (
+              <p style={{ color:'var(--text)', fontSize:'14px', lineHeight:1.6 }}>{faction.description}</p>
             )}
-            {isOwnFaction && <span className="tag tag-green">Your Faction</span>}
-            {diploLabel && <span style={{ background:`${diploColor}22`, color:diploColor, padding:'3px 10px', borderRadius:'999px', fontSize:'13px', fontWeight:700 }}>{diploLabel}</span>}
-            {faction.is_recruiting && <span className="tag tag-yellow">Recruiting</span>}
           </div>
-          {faction.server_name && <p style={{ color:'var(--muted)', fontSize:'13px', marginTop:'4px' }}>📡 {faction.server_name}</p>}
-          {faction.description && <p style={{ color:'var(--text)', fontSize:'14px', marginTop:'8px', lineHeight:1.6 }}>{faction.description}</p>}
+
+          {/* Copy link */}
+          <button className="btn btn-ghost" style={{ fontSize:'12px', display:'flex', alignItems:'center', gap:'6px', flexShrink:0 }} onClick={copyLink}>
+            <Copy size={12} /> {copied ? '✓ Copied!' : 'Share'}
+          </button>
         </div>
       </div>
 
       {/* Stats */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(160px, 1fr))', gap:'12px' }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(140px, 1fr))', gap:'10px' }}>
         {[
           { label:'Members', value:stats.members, icon:Users, color:'var(--green)' },
           { label:'Territories', value:stats.territories, icon:Map, color:'var(--yellow)' },
           { label:'Raids', value:stats.raids, icon:Sword, color:'var(--red)' },
-          { label:'Active Pacts', value:stats.pacts, icon:Shield, color:'#818cf8' },
-        ].map(({ label, value, icon: Icon, color }) => (
+          { label:'Alliances', value:stats.pacts, icon:Shield, color:'#818cf8' },
+        ].map(({ label, value, icon:Icon, color }) => (
           <div key={label} className="card" style={{ display:'flex', gap:'12px', alignItems:'center', padding:'14px' }}>
-            <div style={{ background:`${color}22`, borderRadius:'8px', padding:'8px' }}>
+            <div style={{ background:`${color}22`, borderRadius:'8px', padding:'8px', flexShrink:0 }}>
               <Icon size={18} color={color} />
             </div>
             <div>
@@ -177,51 +234,82 @@ export default function FactionProfile({ session }) {
         ))}
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'20px' }}>
+      {/* Achievements */}
+      {achievements.length > 0 && (
+        <div className="card" style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
+          <h3 style={{ fontWeight:700, fontSize:'15px', display:'flex', alignItems:'center', gap:'8px' }}>
+            <Trophy size={15} color="var(--yellow)" /> Achievements
+          </h3>
+          <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+            {achievements.map(a => {
+              const meta = ACHIEVEMENTS_META[a.type] || { label: a.type, icon:'🏅' }
+              return (
+                <div key={a.id} style={{ display:'flex', alignItems:'center', gap:'6px', background:'#78350f22', border:'1px solid #92400e44', borderRadius:'8px', padding:'6px 12px' }}>
+                  <span style={{ fontSize:'16px' }}>{meta.icon}</span>
+                  <span style={{ fontSize:'13px', color:'var(--yellow)', fontWeight:600 }}>{meta.label}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Members + Activity grid */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px' }}>
+
         {/* Members */}
         <div className="card" style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
           <h3 style={{ fontWeight:700, fontSize:'15px', display:'flex', alignItems:'center', gap:'8px' }}>
             <Users size={15} color="var(--green)" /> Members ({members.length})
           </h3>
-          {members.map(m => (
-            <div key={m.id} style={{ display:'flex', alignItems:'center', gap:'10px', padding:'6px 0', borderBottom:'1px solid var(--border)' }}>
-              {m.profile?.discord_avatar
-                ? <img src={m.profile.discord_avatar} style={{ width:28, height:28, borderRadius:'50%', border:'1px solid var(--border)', flexShrink:0 }} />
-                : <div style={{ width:28, height:28, borderRadius:'50%', background:'var(--border)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'12px', flexShrink:0 }}>{ROLE_ICONS[m.role]}</div>
-              }
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ fontSize:'13px', fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{m.profile?.discord_username || 'Unknown'}</div>
-                {canManage && notes[m.user_id] && (
-                  <div style={{ fontSize:'11px', color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>📝 {notes[m.user_id].note}</div>
-                )}
+          <div style={{ display:'flex', flexDirection:'column', gap:'2px', maxHeight:'320px', overflowY:'auto' }}>
+            {members.map(m => (
+              <div key={m.id} style={{ display:'flex', alignItems:'center', gap:'8px', padding:'6px 0', borderBottom:'1px solid var(--border)' }}>
+                {m.profile?.discord_avatar
+                  ? <img src={m.profile.discord_avatar} style={{ width:26, height:26, borderRadius:'50%', border:'1px solid var(--border)', flexShrink:0 }} />
+                  : <div style={{ width:26, height:26, borderRadius:'50%', background:'var(--border)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'11px', flexShrink:0 }}>👤</div>
+                }
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:'13px', fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                    {m.profile?.discord_username || 'Unknown'}
+                  </div>
+                  {canManage && notes[m.user_id] && (
+                    <div style={{ fontSize:'11px', color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      📝 {notes[m.user_id].note}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display:'flex', gap:'4px', alignItems:'center', flexShrink:0 }}>
+                  <span className={`tag ${ROLE_COLORS[m.role]}`} style={{ fontSize:'10px', padding:'1px 6px' }}>
+                    {ROLE_ICONS[m.role]} {m.role}
+                  </span>
+                  {canManage && m.user_id !== userId && (
+                    <button onClick={() => { setEditingNote(m.user_id); setNoteText(notes[m.user_id]?.note || '') }} style={{ background:'transparent', border:'none', cursor:'pointer', padding:'2px' }}>
+                      <StickyNote size={12} color={notes[m.user_id] ? 'var(--green)' : 'var(--muted)'} />
+                    </button>
+                  )}
+                </div>
               </div>
-              <div style={{ display:'flex', gap:'4px', alignItems:'center', flexShrink:0 }}>
-                <span className={`tag ${ROLE_COLORS[m.role]}`} style={{ fontSize:'10px' }}>{ROLE_ICONS[m.role]} {m.role}</span>
-                {canManage && m.user_id !== userId && (
-                  <button onClick={() => { setEditingNote(m.user_id); setNoteText(notes[m.user_id]?.note || '') }} style={{ background:'transparent', border:'none', cursor:'pointer', padding:'2px' }}>
-                    <StickyNote size={12} color={notes[m.user_id] ? 'var(--green)' : 'var(--muted)'} />
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
 
-          {/* Note editor */}
           {editingNote && canManage && (
             <div style={{ background:'#0d1a0d', border:'1px solid var(--green-dim)', borderRadius:'6px', padding:'10px', display:'flex', flexDirection:'column', gap:'8px' }}>
-              <span style={{ fontSize:'12px', color:'var(--green)' }}>📝 Private note (only leadership can see)</span>
+              <span style={{ fontSize:'12px', color:'var(--green)' }}>📝 Private note — only leadership can see</span>
               <textarea value={noteText} onChange={e => setNoteText(e.target.value)} rows={2} placeholder="Add a private note about this member..." />
               <div style={{ display:'flex', gap:'6px' }}>
                 <button className="btn btn-green" style={{ fontSize:'12px', padding:'4px 10px' }} onClick={() => saveNote(editingNote)}>Save</button>
-                {notes[editingNote] && <button className="btn btn-ghost" style={{ fontSize:'12px', padding:'4px 10px', color:'var(--red)' }} onClick={() => { deleteNote(editingNote); setEditingNote(null) }}>Delete</button>}
+                {notes[editingNote] && (
+                  <button className="btn btn-ghost" style={{ fontSize:'12px', padding:'4px 10px', color:'var(--red)' }} onClick={() => { setEditingNote(null); setNotes(n => { const c = {...n}; delete c[editingNote]; return c }) }}>Delete</button>
+                )}
                 <button className="btn btn-ghost" style={{ fontSize:'12px', padding:'4px 10px' }} onClick={() => setEditingNote(null)}>Cancel</button>
               </div>
             </div>
           )}
         </div>
 
-        {/* Recent Activity */}
-        <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
+        {/* Activity column */}
+        <div style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
           {/* Recent Raids */}
           <div className="card" style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
             <h3 style={{ fontWeight:700, fontSize:'15px', display:'flex', alignItems:'center', gap:'8px' }}>
@@ -229,13 +317,11 @@ export default function FactionProfile({ session }) {
             </h3>
             {recentRaids.length === 0 && <p style={{ color:'var(--muted)', fontSize:'13px' }}>No raids yet.</p>}
             {recentRaids.map(r => (
-              <div key={r.id} style={{ fontSize:'13px', padding:'6px 0', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                <span style={{ fontWeight:600 }}>{r.title}</span>
-                <div style={{ display:'flex', gap:'6px', alignItems:'center' }}>
-                  {r.outcome && <span style={{ fontSize:'11px', color: r.outcome === 'success' ? 'var(--green)' : r.outcome === 'fail' ? 'var(--red)' : 'var(--muted)' }}>
-                    {r.outcome === 'success' ? '✅' : r.outcome === 'fail' ? '❌' : '⏳'}
-                  </span>}
-                  {r.rating && <span style={{ color:'var(--yellow)', fontSize:'11px' }}>{'⭐'.repeat(r.rating)}</span>}
+              <div key={r.id} style={{ fontSize:'13px', padding:'6px 0', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center', gap:'8px' }}>
+                <span style={{ fontWeight:600, flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.title}</span>
+                <div style={{ display:'flex', gap:'4px', alignItems:'center', flexShrink:0 }}>
+                  {r.outcome && <span style={{ fontSize:'12px' }}>{r.outcome==='success'?'✅':r.outcome==='fail'?'❌':r.outcome==='partial'?'⚠️':'🚫'}</span>}
+                  {r.rating > 0 && <span style={{ color:'var(--yellow)', fontSize:'11px' }}>{'★'.repeat(r.rating)}</span>}
                 </div>
               </div>
             ))}
@@ -244,12 +330,12 @@ export default function FactionProfile({ session }) {
           {/* Recent Events */}
           <div className="card" style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
             <h3 style={{ fontWeight:700, fontSize:'15px', display:'flex', alignItems:'center', gap:'8px' }}>
-              <Star size={15} color="var(--yellow)" /> Recent Events
+              <Star size={15} color="var(--yellow)" /> Recent Activity
             </h3>
-            {recentEvents.length === 0 && <p style={{ color:'var(--muted)', fontSize:'13px' }}>No events yet.</p>}
+            {recentEvents.length === 0 && <p style={{ color:'var(--muted)', fontSize:'13px' }}>No activity yet.</p>}
             {recentEvents.map(e => (
               <div key={e.id} style={{ fontSize:'13px', padding:'6px 0', borderBottom:'1px solid var(--border)' }}>
-                <div style={{ fontWeight:600 }}>{e.title}</div>
+                <div style={{ fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{e.title}</div>
                 <div style={{ fontSize:'11px', color:'var(--muted)', marginTop:'2px' }}>{new Date(e.created_at).toLocaleDateString()}</div>
               </div>
             ))}
@@ -257,57 +343,30 @@ export default function FactionProfile({ session }) {
         </div>
       </div>
 
-{/* Name History */}
-{canManage && (
-  <NameHistory factionId={id} />
-)}
-      {/* Share link */}
-      <div className="card" style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 20px' }}>
-        <div>
-          <span style={{ fontSize:'13px', color:'var(--muted)' }}>Share this faction profile:</span>
-          <div style={{ fontFamily:'Share Tech Mono', fontSize:'12px', color:'var(--green)', marginTop:'2px' }}>
-            {window.location.origin}/faction/{id}
-          </div>
-        </div>
-        <button className="btn btn-green" style={{ fontSize:'13px' }} onClick={() => navigator.clipboard.writeText(`${window.location.origin}/faction/${id}`)}>
-          Copy Link
-        </button>
-      </div>
-    </div>
-  )
-}
-function NameHistory({ factionId }) {
-  const [history, setHistory] = useState([])
-  const [show, setShow] = useState(false)
-
-  useEffect(() => {
-    if (show) {
-      supabase.from('faction_name_history')
-        .select('*, profile:profiles!faction_name_history_changed_by_fkey(discord_username)')
-        .eq('faction_id', factionId)
-        .order('created_at', { ascending: false })
-        .then(({ data }) => setHistory(data || []))
-    }
-  }, [show, factionId])
-
-  return (
-    <div className="card">
-      <button onClick={() => setShow(s => !s)} style={{ background:'transparent', border:'none', color:'var(--muted)', cursor:'pointer', fontSize:'13px', display:'flex', alignItems:'center', gap:'6px' }}>
-        📜 {show ? 'Hide' : 'Show'} Name History ({history.length})
-      </button>
-      {show && (
-        <div style={{ marginTop:'12px', display:'flex', flexDirection:'column', gap:'6px' }}>
-          {history.length === 0 && <p style={{ fontSize:'12px', color:'var(--muted)' }}>No name changes recorded.</p>}
-          {history.map(h => (
-            <div key={h.id} style={{ fontSize:'13px', display:'flex', gap:'8px', alignItems:'center', padding:'6px 0', borderBottom:'1px solid var(--border)' }}>
-              <span style={{ color:'var(--muted)' }}>{h.old_name}</span>
-              <span style={{ color:'var(--green)' }}>→</span>
-              <span style={{ fontWeight:600 }}>{h.new_name}</span>
-              <span style={{ color:'var(--muted)', fontSize:'11px', marginLeft:'auto' }}>
-                by {h.profile?.discord_username} • {new Date(h.created_at).toLocaleDateString()}
-              </span>
+      {/* Name History — leader only */}
+      {canManage && (
+        <div className="card">
+          <button
+            onClick={() => { setShowNameHistory(s => !s); if (!showNameHistory) loadNameHistory() }}
+            style={{ background:'transparent', border:'none', color:'var(--muted)', cursor:'pointer', fontSize:'13px', display:'flex', alignItems:'center', gap:'6px' }}
+          >
+            📜 {showNameHistory ? 'Hide' : 'Show'} Name History
+          </button>
+          {showNameHistory && (
+            <div style={{ marginTop:'12px', display:'flex', flexDirection:'column', gap:'6px' }}>
+              {nameHistory.length === 0 && <p style={{ fontSize:'12px', color:'var(--muted)' }}>No name changes recorded.</p>}
+              {nameHistory.map(h => (
+                <div key={h.id} style={{ fontSize:'13px', display:'flex', gap:'8px', alignItems:'center', padding:'6px 0', borderBottom:'1px solid var(--border)', flexWrap:'wrap' }}>
+                  <span style={{ color:'var(--muted)' }}>{h.old_name}</span>
+                  <span style={{ color:'var(--green)' }}>→</span>
+                  <span style={{ fontWeight:600 }}>{h.new_name}</span>
+                  <span style={{ color:'var(--muted)', fontSize:'11px', marginLeft:'auto' }}>
+                    by {h.profile?.discord_username} • {new Date(h.created_at).toLocaleDateString()}
+                  </span>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
       )}
     </div>
