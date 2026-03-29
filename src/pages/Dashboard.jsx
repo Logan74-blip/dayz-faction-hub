@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { Map, Package, Shield, Users, Sword, TrendingUp, Target, RefreshCw } from 'lucide-react'
+import { Map, Package, Shield, Users, Sword, TrendingUp, Target, RefreshCw, Archive } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 function timeAgo(date) {
@@ -23,6 +23,7 @@ const EVENT_ICONS = {
 
 export default function Dashboard({ session }) {
   const [faction, setFaction] = useState(null)
+  const [memberRole, setMemberRole] = useState(null)
   const [factionName, setFactionName] = useState('')
   const [stats, setStats] = useState({ territories:0, resources:0, pacts:0, raids:0, members:0, newMembers:0, wars_won:0, wars_lost:0, bounties:0 })
   const [members, setMembers] = useState([])
@@ -30,9 +31,9 @@ export default function Dashboard({ session }) {
   const [feed, setFeed] = useState([])
   const [activeTab, setActiveTab] = useState('overview')
   const [loading, setLoading] = useState(true)
-const [showFreshModal, setShowFreshModal] = useState(false)
-const [freshLabel, setFreshLabel] = useState('')
-const [freshLoading, setFreshLoading] = useState(false)
+  const [showFreshModal, setShowFreshModal] = useState(false)
+  const [freshLabel, setFreshLabel] = useState('')
+  const [freshLoading, setFreshLoading] = useState(false)
   const navigate = useNavigate()
   const userId = session.user.id
 
@@ -47,6 +48,7 @@ const [freshLoading, setFreshLoading] = useState(false)
       .maybeSingle()
     if (data?.factions) {
       setFaction(data.factions)
+      setMemberRole(data.role)
       await Promise.all([
         loadStats(data.factions.id),
         loadMembers(data.factions.id),
@@ -56,62 +58,6 @@ const [freshLoading, setFreshLoading] = useState(false)
     }
     setLoading(false)
   }
-  async function startFresh(label) {
-  if (!faction) return
-
-  // Collect snapshot of current stats
-  const [mems, raids, resources, bounties, territories, announcements, recentEvents] = await Promise.all([
-    supabase.from('faction_members').select('id', { count:'exact', head:true }).eq('faction_id', faction.id),
-    supabase.from('raids').select('id', { count:'exact', head:true }).eq('faction_id', faction.id),
-    supabase.from('resources').select('id', { count:'exact', head:true }).eq('faction_id', faction.id),
-    supabase.from('bounties').select('id', { count:'exact', head:true }).eq('faction_id', faction.id),
-    supabase.from('territories').select('id', { count:'exact', head:true }).eq('faction_id', faction.id),
-    supabase.from('announcements').select('id', { count:'exact', head:true }).eq('faction_id', faction.id),
-    supabase.from('events').select('title, created_at').eq('faction_id', faction.id).order('created_at', { ascending:false }).limit(10),
-  ])
-
-  const snapshot = {
-    members: mems.count || 0,
-    raids: raids.count || 0,
-    resources: resources.count || 0,
-    bounties: bounties.count || 0,
-    territories: territories.count || 0,
-    announcements: announcements.count || 0,
-    recentEvents: recentEvents.data || [],
-    archivedAt: new Date().toISOString(),
-  }
-
-  // Save log
-  await supabase.from('faction_logs').insert({
-    faction_id: faction.id,
-    archived_by: userId,
-    archive_label: label || `Fresh Start — ${new Date().toLocaleDateString('en-US', { month:'long', year:'numeric' })}`,
-    server_name: faction.server_name,
-    snapshot
-  })
-
-  // Clear operational data — keep members, settings, customization
-  await supabase.from('raids').delete().eq('faction_id', faction.id)
-  await supabase.from('resources').delete().eq('faction_id', faction.id)
-  await supabase.from('bounties').delete().eq('faction_id', faction.id)
-  await supabase.from('territories').delete().eq('faction_id', faction.id)
-  await supabase.from('announcements').delete().eq('faction_id', faction.id)
-  await supabase.from('events').delete().eq('faction_id', faction.id)
-  await supabase.from('treasury').delete().eq('faction_id', faction.id)
-  await supabase.from('diplomacy').delete().or(`faction_a.eq.${faction.id},faction_b.eq.${faction.id}`)
-
-  // Log the fresh start as a new event
-  await supabase.from('events').insert({
-    faction_id: faction.id,
-    created_by: userId,
-    type: 'custom',
-    title: '🔄 Fresh Start',
-    description: `Faction data archived and cleared. Label: ${label || 'Fresh Start'}`
-  })
-
-  // Reload
-  await loadFaction()
-}
 
   async function loadStats(fid) {
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
@@ -179,12 +125,57 @@ const [freshLoading, setFreshLoading] = useState(false)
       await supabase.from('faction_members').insert({ faction_id: data.id, user_id: userId, role: 'leader' })
       await supabase.from('member_history').insert({ faction_id: data.id, user_id: userId, action: 'joined' })
       setFaction(data)
+      setMemberRole('leader')
     }
   }
 
-  if (loading) return (
-    <div className="page-loading"><div className="spinner" /></div>
-  )
+  async function startFresh(label) {
+    if (!faction) return
+    const [mems, raids, resources, bounties, territories, announcements, recentEvents] = await Promise.all([
+      supabase.from('faction_members').select('id', { count:'exact', head:true }).eq('faction_id', faction.id),
+      supabase.from('raids').select('id', { count:'exact', head:true }).eq('faction_id', faction.id),
+      supabase.from('resources').select('id', { count:'exact', head:true }).eq('faction_id', faction.id),
+      supabase.from('bounties').select('id', { count:'exact', head:true }).eq('faction_id', faction.id),
+      supabase.from('territories').select('id', { count:'exact', head:true }).eq('faction_id', faction.id),
+      supabase.from('announcements').select('id', { count:'exact', head:true }).eq('faction_id', faction.id),
+      supabase.from('events').select('title, created_at').eq('faction_id', faction.id).order('created_at', { ascending:false }).limit(10),
+    ])
+    const snapshot = {
+      members: mems.count || 0,
+      raids: raids.count || 0,
+      resources: resources.count || 0,
+      bounties: bounties.count || 0,
+      territories: territories.count || 0,
+      announcements: announcements.count || 0,
+      recentEvents: recentEvents.data || [],
+      archivedAt: new Date().toISOString(),
+    }
+    await supabase.from('faction_logs').insert({
+      faction_id: faction.id,
+      archived_by: userId,
+      archive_label: label || `Fresh Start — ${new Date().toLocaleDateString('en-US', { month:'long', year:'numeric' })}`,
+      server_name: faction.server_name,
+      snapshot
+    })
+    await Promise.all([
+      supabase.from('raids').delete().eq('faction_id', faction.id),
+      supabase.from('resources').delete().eq('faction_id', faction.id),
+      supabase.from('bounties').delete().eq('faction_id', faction.id),
+      supabase.from('territories').delete().eq('faction_id', faction.id),
+      supabase.from('announcements').delete().eq('faction_id', faction.id),
+      supabase.from('events').delete().eq('faction_id', faction.id),
+      supabase.from('treasury').delete().eq('faction_id', faction.id),
+      supabase.from('diplomacy').delete().or(`faction_a.eq.${faction.id},faction_b.eq.${faction.id}`),
+    ])
+    await supabase.from('events').insert({
+      faction_id: faction.id, created_by: userId, type: 'custom',
+      title: '🔄 Fresh Start',
+      description: `Faction data archived and cleared. Label: ${label || 'Fresh Start'}`
+    })
+    await loadFaction()
+  }
+
+  if (loading) return <div className="page-loading"><div className="spinner" /></div>
 
   if (!faction) return (
     <div style={{ maxWidth:480, margin:'80px auto', padding:'0 24px' }}>
@@ -244,9 +235,7 @@ const [freshLoading, setFreshLoading] = useState(false)
             <p style={{ color:'var(--muted)', marginTop:'4px', fontSize:'13px' }}>
               Faction Command Center
               {faction.server_name && (
-                <span style={{ marginLeft:'10px', color:'var(--green)' }}>
-                  📡 {faction.server_name}
-                </span>
+                <span style={{ marginLeft:'10px', color:'var(--green)' }}>📡 {faction.server_name}</span>
               )}
             </p>
           </div>
@@ -280,9 +269,9 @@ const [freshLoading, setFreshLoading] = useState(false)
         ))}
       </div>
 
-      {/* Overview */}
+      {/* ── OVERVIEW ── */}
       {activeTab === 'overview' && (
-        <>
+        <div style={{ display:'flex', flexDirection:'column', gap:'20px' }}>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(160px, 1fr))', gap:'12px' }}>
             {statCards.map(({ label, value, icon:Icon, color, path }) => (
               <div key={label} className="card" style={{ cursor:'pointer', display:'flex', gap:'12px', alignItems:'center', padding:'14px', transition:'border-color 0.15s' }}
@@ -301,7 +290,7 @@ const [freshLoading, setFreshLoading] = useState(false)
             ))}
           </div>
 
-          {/* War status */}
+          {/* War record */}
           <div className="card">
             <h3 style={{ fontWeight:700, fontSize:'15px', marginBottom:'14px' }}>💀 War Record</h3>
             <div style={{ display:'flex', gap:'32px', flexWrap:'wrap' }}>
@@ -319,40 +308,42 @@ const [freshLoading, setFreshLoading] = useState(false)
           </div>
 
           {/* Quick actions */}
-<div className="card">
-  <h3 style={{ fontWeight:700, fontSize:'15px', marginBottom:'14px' }}>⚡ Quick Actions</h3>
-  <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
-    {[
-      { label:'Schedule Raid', path:'/raids', color:'var(--red)' },
-      { label:'Post Bounty', path:'/bounties', color:'var(--yellow)' },
-      { label:'Add Resources', path:'/resources', color:'#818cf8' },
-      { label:'Send Diplomacy', path:'/diplomacy', color:'var(--green)' },
-      { label:'Post Announcement', path:'/announcements', color:'var(--green)' },
-      { label:'View War Map', path:'/map', color:'var(--yellow)' },
-      { label:'View Logs', path:'/faction-logs', color:'var(--muted)' },
-    ].map(({ label, path, color }) => (
-      <button key={label} className="btn btn-ghost" style={{ fontSize:'13px', color, borderColor:`${color}44` }} onClick={() => navigate(path)}>
-        {label}
-      </button>
-    ))}
-  </div>
-  {role === 'leader' && (
-    <div style={{ marginTop:'16px', paddingTop:'16px', borderTop:'1px solid var(--border)' }}>
-      <button
-        className="btn btn-ghost"
-        style={{ fontSize:'13px', color:'var(--yellow)', borderColor:'#d97706', display:'flex', alignItems:'center', gap:'8px' }}
-        onClick={() => setShowFreshModal(true)}
-      >
-        🔄 Start Fresh
-      </button>
-      <p style={{ fontSize:'11px', color:'var(--muted)', marginTop:'6px' }}>
-        Archive all faction data and start a new chapter. Members are kept.
-      </p>
-    </div>
-  )}
-</div>
+          <div className="card">
+            <h3 style={{ fontWeight:700, fontSize:'15px', marginBottom:'14px' }}>⚡ Quick Actions</h3>
+            <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+              {[
+                { label:'Schedule Raid', path:'/raids', color:'var(--red)' },
+                { label:'Post Bounty', path:'/bounties', color:'var(--yellow)' },
+                { label:'Add Resources', path:'/resources', color:'#818cf8' },
+                { label:'Send Diplomacy', path:'/diplomacy', color:'var(--green)' },
+                { label:'Post Announcement', path:'/announcements', color:'var(--green)' },
+                { label:'View War Map', path:'/map', color:'var(--yellow)' },
+                { label:'View Logs', path:'/faction-logs', color:'var(--muted)' },
+              ].map(({ label, path, color }) => (
+                <button key={label} className="btn btn-ghost" style={{ fontSize:'13px', color, borderColor:`${color}44` }} onClick={() => navigate(path)}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            {memberRole === 'leader' && (
+              <div style={{ marginTop:'16px', paddingTop:'16px', borderTop:'1px solid var(--border)' }}>
+                <button
+                  className="btn btn-ghost"
+                  style={{ fontSize:'13px', color:'var(--yellow)', borderColor:'#d97706', display:'flex', alignItems:'center', gap:'8px' }}
+                  onClick={() => setShowFreshModal(true)}
+                >
+                  🔄 Start Fresh
+                </button>
+                <p style={{ fontSize:'11px', color:'var(--muted)', marginTop:'6px' }}>
+                  Archive all faction data and start a new chapter. Members are kept.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
-      {/* News Feed */}
+      {/* ── NEWS FEED ── */}
       {activeTab === 'feed' && (
         <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
           <p style={{ fontSize:'13px', color:'var(--muted)' }}>Latest faction activity — updated in real time</p>
@@ -374,7 +365,7 @@ const [freshLoading, setFreshLoading] = useState(false)
         </div>
       )}
 
-      {/* Members */}
+      {/* ── MEMBERS ── */}
       {activeTab === 'members' && (
         <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
           {members.length === 0 && (
@@ -398,7 +389,7 @@ const [freshLoading, setFreshLoading] = useState(false)
         </div>
       )}
 
-      {/* Turnover */}
+      {/* ── TURNOVER ── */}
       {activeTab === 'turnover' && (
         <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(160px, 1fr))', gap:'14px' }}>
@@ -414,7 +405,6 @@ const [freshLoading, setFreshLoading] = useState(false)
               </div>
             ))}
           </div>
-
           <div className="card">
             <h3 style={{ fontWeight:700, fontSize:'15px', marginBottom:'12px' }}>Recent Member Activity</h3>
             {history.length === 0 && <p style={{ color:'var(--muted)', fontSize:'13px' }}>No history yet.</p>}
@@ -432,72 +422,66 @@ const [freshLoading, setFreshLoading] = useState(false)
               ))}
             </div>
           </div>
-
           <div className="card" style={{ background:'#14532d22', borderColor:'var(--green-dim)' }}>
             <p style={{ fontSize:'13px', color:'var(--muted)', lineHeight:1.6 }}>
-              💡 <strong style={{ color:'var(--text)' }}>Turnover rate</strong> measures how many members leave relative to joins. Under 25% is healthy. Over 50% suggests retention issues worth addressing.
+              💡 <strong style={{ color:'var(--text)' }}>Turnover rate</strong> measures how many members leave relative to joins. Under 25% is healthy. Over 50% suggests retention issues.
             </p>
           </div>
         </div>
       )}
-      {/* Start Fresh Modal */}
-{showFreshModal && (
-  <div style={{ position:'fixed', inset:0, background:'#00000088', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:'24px' }} onClick={() => setShowFreshModal(false)}>
-    <div className="card" style={{ maxWidth:'480px', width:'100%', display:'flex', flexDirection:'column', gap:'16px', borderColor:'var(--yellow)' }} onClick={e => e.stopPropagation()}>
-      <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-        <span style={{ fontSize:'28px' }}>🔄</span>
-        <h3 style={{ fontWeight:700, fontSize:'20px', color:'var(--yellow)' }}>Start Fresh</h3>
-      </div>
-      <p style={{ color:'var(--muted)', fontSize:'14px', lineHeight:1.6 }}>
-        This will <strong style={{ color:'var(--text)' }}>archive all faction data</strong> and clear it for a fresh start.
-        Your members and faction settings will be kept.
-      </p>
-      <div style={{ background:'#0d1a0d', border:'1px solid var(--border)', borderRadius:'6px', padding:'12px', display:'flex', flexDirection:'column', gap:'6px' }}>
-        <p style={{ fontSize:'12px', color:'var(--green)', fontFamily:'Share Tech Mono' }}>WHAT GETS ARCHIVED + CLEARED:</p>
-        <p style={{ fontSize:'12px', color:'var(--muted)', lineHeight:1.6 }}>
-          ⚔️ Raids • 📦 Resources • 🎯 Bounties • 🗺️ Territories • 📣 Announcements • 💰 Treasury • 🤝 Diplomacy • 📋 Events
-        </p>
-        <p style={{ fontSize:'12px', color:'var(--green)', fontFamily:'Share Tech Mono', marginTop:'6px' }}>WHAT IS KEPT:</p>
-        <p style={{ fontSize:'12px', color:'var(--muted)' }}>
-          👥 Members • ⚙️ Settings • 🎨 Customization • 📜 Faction Logs
-        </p>
-      </div>
-      <div>
-        <label style={{ fontSize:'12px', color:'var(--muted)', display:'block', marginBottom:'6px' }}>
-          ARCHIVE LABEL (optional)
-        </label>
-        <input
-          placeholder={`e.g. Server Wipe — ${new Date().toLocaleDateString('en-US', { month:'long', year:'numeric' })}`}
-          value={freshLabel}
-          onChange={e => setFreshLabel(e.target.value)}
-          autoFocus
-        />
-      </div>
-      <p style={{ fontSize:'12px', color:'var(--yellow)', background:'#451a0322', padding:'10px', borderRadius:'6px' }}>
-        ⚠️ A permanent snapshot will be saved to <strong>Faction Logs</strong> before clearing. This cannot be undone.
-      </p>
-      <div style={{ display:'flex', gap:'8px' }}>
-        <button
-          className="btn"
-          style={{ flex:1, background:'#d97706', color:'#fff', border:'none', fontWeight:700, fontSize:'14px' }}
-          disabled={freshLoading}
-          onClick={async () => {
-            setFreshLoading(true)
-            await startFresh(freshLabel)
-            setShowFreshModal(false)
-            setFreshLabel('')
-            setFreshLoading(false)
-          }}
-        >
-          {freshLoading ? 'Archiving...' : '🔄 Yes, Start Fresh'}
-        </button>
-        <button className="btn btn-ghost" style={{ flex:1 }} onClick={() => setShowFreshModal(false)}>
-          Cancel
-        </button>
-      </div>
-    </div>
-  </div>
-)}
+
+      {/* ── START FRESH MODAL ── */}
+      {showFreshModal && (
+        <div style={{ position:'fixed', inset:0, background:'#00000088', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:'24px' }} onClick={() => setShowFreshModal(false)}>
+          <div className="card" style={{ maxWidth:'480px', width:'100%', display:'flex', flexDirection:'column', gap:'16px', borderColor:'var(--yellow)' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+              <span style={{ fontSize:'28px' }}>🔄</span>
+              <h3 style={{ fontWeight:700, fontSize:'20px', color:'var(--yellow)' }}>Start Fresh</h3>
+            </div>
+            <p style={{ color:'var(--muted)', fontSize:'14px', lineHeight:1.6 }}>
+              This will <strong style={{ color:'var(--text)' }}>archive all faction data</strong> and clear it for a fresh start. Your members and settings are kept.
+            </p>
+            <div style={{ background:'#0d1a0d', border:'1px solid var(--border)', borderRadius:'6px', padding:'12px', display:'flex', flexDirection:'column', gap:'6px' }}>
+              <p style={{ fontSize:'12px', color:'var(--green)', fontFamily:'Share Tech Mono' }}>CLEARED:</p>
+              <p style={{ fontSize:'12px', color:'var(--muted)', lineHeight:1.6 }}>
+                ⚔️ Raids • 📦 Resources • 🎯 Bounties • 🗺️ Territories • 📣 Announcements • 💰 Treasury • 🤝 Diplomacy • 📋 Events
+              </p>
+              <p style={{ fontSize:'12px', color:'var(--green)', fontFamily:'Share Tech Mono', marginTop:'4px' }}>KEPT:</p>
+              <p style={{ fontSize:'12px', color:'var(--muted)' }}>👥 Members • ⚙️ Settings • 🎨 Customization • 📜 Faction Logs</p>
+            </div>
+            <div>
+              <label style={{ fontSize:'12px', color:'var(--muted)', display:'block', marginBottom:'6px' }}>ARCHIVE LABEL (optional)</label>
+              <input
+                placeholder={`e.g. Server Wipe — ${new Date().toLocaleDateString('en-US', { month:'long', year:'numeric' })}`}
+                value={freshLabel}
+                onChange={e => setFreshLabel(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <p style={{ fontSize:'12px', color:'var(--yellow)', background:'#451a0322', padding:'10px', borderRadius:'6px' }}>
+              ⚠️ A permanent snapshot will be saved to Faction Logs before clearing. This cannot be undone.
+            </p>
+            <div style={{ display:'flex', gap:'8px' }}>
+              <button
+                className="btn"
+                style={{ flex:1, background:'#d97706', color:'#fff', border:'none', fontWeight:700, fontSize:'14px' }}
+                disabled={freshLoading}
+                onClick={async () => {
+                  setFreshLoading(true)
+                  await startFresh(freshLabel)
+                  setShowFreshModal(false)
+                  setFreshLabel('')
+                  setFreshLoading(false)
+                }}
+              >
+                {freshLoading ? 'Archiving...' : '🔄 Yes, Start Fresh'}
+              </button>
+              <button className="btn btn-ghost" style={{ flex:1 }} onClick={() => setShowFreshModal(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
