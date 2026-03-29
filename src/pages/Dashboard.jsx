@@ -71,7 +71,7 @@ export default function Dashboard({ session }) {
   async function loadMembers(fid) {
     const { data } = await supabase
       .from('faction_members')
-      .select('*, profile:profiles(discord_username, discord_avatar), activity:member_activity(last_seen)')
+      .select('*, profile:profiles(discord_username, discord_avatar)')
       .eq('faction_id', fid)
       .order('joined_at', { ascending: false })
     setMembers(data || [])
