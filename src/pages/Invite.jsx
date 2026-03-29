@@ -177,10 +177,3 @@ export default function Invite({ session }) {
     </div>
   )
 }
-```
-
-Press **Ctrl+S**
-
-Now we need to add the invite URL to Supabase Auth allowed redirects. Go to **Supabase → Authentication → URL Configuration** → add this to **Redirect URLs**:
-```
-https://dayz-faction-hub.vercel.app/invite/*
