@@ -3,6 +3,7 @@ import { supabase } from '../supabaseClient'
 import { useRole } from '../hooks/useRole'
 import { Plus, Pin, Trash2, AlertTriangle } from 'lucide-react'
 import { sendWebhookNotification } from './Settings'
+import { useToast } from '../hooks/useToast'
 
 export default function Announcements({ session }) {
   const { role, faction } = useRole(session.user.id)
@@ -13,6 +14,7 @@ export default function Announcements({ session }) {
   const [loading, setLoading] = useState(true)
   const userId = session.user.id
   const canPost = role === 'leader' || role === 'co-leader'
+  const { success, error, ToastContainer } = useToast()
 
   useEffect(() => { if (faction?.id) load() }, [faction?.id])
 
@@ -38,6 +40,7 @@ export default function Announcements({ session }) {
       pinned: form.pinned
     }).select('*, profile:profiles!announcements_created_by_fkey(discord_username, discord_avatar)').single()
     if (!error) {
+      success('Announcement posted!')
       setAnnouncements(a => form.pinned
         ? [data, ...a]
         : [...a.filter(x => x.pinned), data, ...a.filter(x => !x.pinned)]
@@ -74,12 +77,14 @@ export default function Announcements({ session }) {
 
   async function deleteAnnouncement(id) {
     if (!window.confirm('Delete this announcement?')) return
+    success('Item removed.')
     await supabase.from('announcements').delete().eq('id', id)
     setAnnouncements(a => a.filter(x => x.id !== id))
   }
 
   async function clearAllAnnouncements() {
     if (!faction) return
+    success('Announcements cleared.')
     await supabase.from('announcements').delete().eq('faction_id', faction.id)
     await supabase.from('events').insert({
       faction_id: faction.id, created_by: userId, type: 'announcement',
@@ -217,6 +222,7 @@ export default function Announcements({ session }) {
           </div>
         </div>
       ))}
+      <ToastContainer />
     </div>
   )
 }

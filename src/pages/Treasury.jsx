@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { useRole } from '../hooks/useRole'
 import { Plus, TrendingUp, TrendingDown, Package, AlertTriangle } from 'lucide-react'
+import { useToast } from '../hooks/useToast'
 
 const CATEGORIES = ['Weapons', 'Ammo', 'Medical', 'Food & Water', 'Vehicles', 'Base Materials', 'Currency', 'Other']
 
@@ -15,6 +16,7 @@ export default function Treasury({ session }) {
   const [filter, setFilter] = useState('all')
   const userId = session.user.id
   const canManage = role === 'leader' || role === 'co-leader'
+  const { success, error, ToastContainer } = useToast()
 
   useEffect(() => { if (faction) load() }, [faction?.id])
 
@@ -39,7 +41,7 @@ export default function Treasury({ session }) {
       notes: form.notes
     }).select('*, profile:profiles!treasury_created_by_fkey(discord_username, discord_avatar)').single()
     if (!error) {
-      setTransactions(t => [data, ...t])
+      setTransactionssuccess('Item added to stockpile!')(t => [data, ...t])
       setForm({ item_name:'', quantity:1, category:'Weapons', transaction_type:'deposit', notes:'' })
       setShowForm(false)
       await supabase.from('activity_log').insert({
@@ -54,7 +56,7 @@ export default function Treasury({ session }) {
 
   async function clearTreasury() {
     if (!faction) return
-    await supabase.from('treasury').delete().eq('faction_id', faction.id)
+    await supabase.from('treasury').deletesuccess('Item removed.')().eq('faction_id', faction.id)
     await supabase.from('activity_log').insert({
       faction_id: faction.id,
       user_id: userId,
@@ -68,6 +70,7 @@ export default function Treasury({ session }) {
       description: clearReason.trim() || 'Treasury was cleared by leadership'
     })
     setTransactions([])
+    success('Stockpile cleared.')
     setShowClearModal(false)
     setClearReason('')
   }
@@ -247,6 +250,7 @@ export default function Treasury({ session }) {
           </div>
         </div>
       </div>
+      <ToastContainer />
     </div>
   )
 }

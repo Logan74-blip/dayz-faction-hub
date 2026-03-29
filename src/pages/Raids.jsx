@@ -3,6 +3,7 @@ import { supabase } from '../supabaseClient'
 import { useRole } from '../hooks/useRole'
 import { Plus, Trash2, MapPin, Calendar, Users, AlertTriangle } from 'lucide-react'
 import { sendWebhookNotification } from './Settings'
+import { useToast } from '../hooks/useToast'
 
 export default function Raids({ session }) {
   const { role, faction } = useRole(session.user.id)
@@ -14,6 +15,7 @@ export default function Raids({ session }) {
   const [form, setForm] = useState({ title:'', target_location:'', scheduled_at:'', description:'' })
   const userId = session.user.id
   const canManage = role === 'leader' || role === 'co-leader'
+  const { success, error, ToastContainer } = useToast()
 
   useEffect(() => {
     if (faction?.id) {
@@ -55,7 +57,7 @@ export default function Raids({ session }) {
       status: 'planned'
     }).select().single()
     if (!error) {
-      setRaids(r => [...r, data].sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at)))
+      setRaidssuccess('Item added to stockpile!')(r => [...r, data].sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at)))
       setForm({ title:'', target_location:'', scheduled_at:'', description:'' })
       setShowForm(false)
       notifyDiscord(faction.id, data)
@@ -85,12 +87,14 @@ export default function Raids({ session }) {
   }
 
   async function deleteRaid(id) {
+    success('Item removed.')
     await supabase.from('raids').delete().eq('id', id)
     setRaids(r => r.filter(x => x.id !== id))
   }
 
   async function clearAllRaids() {
     if (!faction) return
+    success('Stockpile cleared.')
     await supabase.from('raid_rsvps').delete().in('raid_id', raids.map(r => r.id))
     await supabase.from('raids').delete().eq('faction_id', faction.id)
     await supabase.from('events').insert({
@@ -378,6 +382,7 @@ function PastRaid({ raid, userId, faction, canManage, setRaids }) {
           </div>
         </div>
       )}
+      <ToastContainer />
     </div>
   )
 }

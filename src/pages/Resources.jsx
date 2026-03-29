@@ -3,6 +3,7 @@ import { supabase } from '../supabaseClient'
 import { Plus, Trash2, Camera, X, Check, Edit2, ChevronUp, ChevronDown, AlertTriangle } from 'lucide-react'
 import { matchItem } from '../dayzItems.js'
 import { useRole } from '../hooks/useRole'
+import { useToast } from '../hooks/useToast'
 
 const CATEGORIES = ['Weapons', 'Ammo', 'Medical', 'Food & Water', 'Vehicle Parts', 'Base Building', 'Tools', 'Attachments', 'Other']
 
@@ -24,6 +25,7 @@ export default function Resources({ session }) {
   const fileRef = useRef(null)
   const userId = session.user.id
   const canManage = role === 'leader' || role === 'co-leader'
+  const { success, error, ToastContainer } = useToast()
 
   useEffect(() => { if (faction) loadItems(faction.id) }, [faction?.id])
 
@@ -58,7 +60,7 @@ export default function Resources({ session }) {
       const newQty = existing.quantity + Number(form.quantity)
       const { data, error } = await supabase.from('resources').update({ quantity: newQty }).eq('id', existing.id).select().single()
       if (!error) {
-        setItems(prev => prev.map(i => i.id === existing.id ? data : i))
+        setItemssuccess('Item added to stockpile!')(prev => prev.map(i => i.id === existing.id ? data : i))
         await logActivity('stockpile_add', `Added ×${form.quantity} ${form.name} to stockpile (stacked, total: ${newQty})`, { item: form.name, quantity: Number(form.quantity), category: form.category })
         setForm({ name:'', category:'Weapons', quantity:1, notes:'' })
       }
@@ -77,6 +79,7 @@ export default function Resources({ session }) {
   }
 
   async function deleteItem(id) {
+    success('Item removed.')
     const item = items.find(i => i.id === id)
     await supabase.from('resources').delete().eq('id', id)
     setItems(prev => prev.filter(x => x.id !== id))
@@ -110,6 +113,7 @@ export default function Resources({ session }) {
   }
 
   async function clearStockpile() {
+    success('Stockpile cleared.')
     if (!faction) return
     await supabase.from('resources').delete().eq('faction_id', faction.id)
     await logActivity('stockpile_clear', `Stockpile cleared${clearReason.trim() ? `: ${clearReason.trim()}` : ''}`, { reason: clearReason.trim() })
@@ -400,6 +404,7 @@ export default function Resources({ session }) {
           </div>
         ))}
       </div>
+      <ToastContainer />
     </div>
   )
 }
