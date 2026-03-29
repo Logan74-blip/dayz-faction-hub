@@ -33,13 +33,14 @@ const NAV_GROUPS = [
     ]
   },
   {
-    label:'Intel', icon:Activity,
-    children:[
-      { to:'/announcements', label:'Announcements', icon:Megaphone },
-      { to:'/eventlog', label:'Event Log', icon:Activity },
-      { to:'/server-calendar', label:'Server Events', icon:Calendar },
-    ]
-  },
+  label:'Intel', icon:Activity,
+  children:[
+    { to:'/announcements', label:'Announcements', icon:Megaphone },
+    { to:'/eventlog', label:'Event Log', icon:Activity },
+    { to:'/server-calendar', label:'Server Events', icon:Calendar },
+    { to:'/faction-logs', label:'Faction Logs', icon:Archive },
+  ]
+},
   {
     label:'Community', icon:Globe,
     children:[
