@@ -90,33 +90,32 @@ export default function Customize({ session }) {
   }
 
   async function saveCustomization() {
-  const selectedFlag = DAYZ_FLAGS.find(f => f.id === (customization.flag || 'none'))
-  const flagEmoji = selectedFlag?.emoji || null
-
+  const FLAG_EMOJI_MAP = {
+    'none': null, 'skull': '💀', 'biohazard': '☢️', 'crossed_swords': '⚔️',
+    'shield': '🛡️', 'wolf': '🐺', 'eagle': '🦅', 'snake': '🐍',
+    'bear': '🐻', 'fire': '🔥', 'lightning': '⚡', 'crown': '👑',
+    'axe': '🪓', 'knife': '🔪', 'gun': '🔫', 'grenade': '💣',
+    'target': '🎯', 'ghost': '👻', 'demon': '👹', 'zombie': '🧟',
+    'military': '🪖', 'flag': '🚩', 'blood': '🩸', 'radiation': '☢️', 'virus': '🦠'
+  }
+  const flagEmoji = FLAG_EMOJI_MAP[customization.flag] || null
   const { data: existing } = await supabase
     .from('faction_customization')
     .select('id')
     .eq('faction_id', faction.id)
     .maybeSingle()
-
   if (existing) {
-    await supabase.from('faction_customization').update({
-      ...customization,
-      updated_at: new Date().toISOString()
-    }).eq('faction_id', faction.id)
+    await supabase.from('faction_customization')
+      .update({ ...customization, updated_at: new Date().toISOString() })
+      .eq('faction_id', faction.id)
   } else {
-    await supabase.from('faction_customization').insert({
-      ...customization,
-      faction_id: faction.id
-    })
+    await supabase.from('faction_customization')
+      .insert({ ...customization, faction_id: faction.id })
   }
-
-  // Save EMOJI to factions table, not the ID
   await supabase.from('factions').update({
     primary_color: customization.primary_color,
     flag: flagEmoji
   }).eq('id', faction.id)
-
   setSaved(true)
   setTimeout(() => setSaved(false), 2000)
 }
