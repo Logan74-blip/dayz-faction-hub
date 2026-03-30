@@ -114,8 +114,8 @@ export default function App() {
         <Route path="/customize" element={<ProtectedRoute session={session}><Customize session={session} /></ProtectedRoute>} />
         <Route path="/hub" element={<ProtectedRoute session={session}><HubAnnouncements session={session} /></ProtectedRoute>} />
         <Route path="/faction-logs" element={<ProtectedRoute session={session}><FactionLogs session={session} /></ProtectedRoute>} />
-        <Route path="/dead-factions" element={<ProtectedRoute session={session}><DeadFactions /></ProtectedRoute>} />
         <Route path="/help" element={<ProtectedRoute session={session}><Help /></ProtectedRoute>} />
+        <Route path="/dead-factions" element={<ProtectedRoute session={session}><DeadFactions /></ProtectedRoute>} />
       </Routes>
     </>
   )
