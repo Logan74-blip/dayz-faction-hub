@@ -115,19 +115,61 @@ export default function Dashboard({ session }) {
   }
 
   async function createFaction() {
-    if (!factionName.trim()) return
-    const { data, error } = await supabase
-      .from('factions')
-      .insert({ name: factionName.trim(), created_by: userId })
-      .select()
-      .single()
-    if (!error) {
-      await supabase.from('faction_members').insert({ faction_id: data.id, user_id: userId, role: 'leader' })
-      await supabase.from('member_history').insert({ faction_id: data.id, user_id: userId, action: 'joined' })
-      setFaction(data)
-      setMemberRole('leader')
-    }
+  if (!factionName.trim()) return
+  if (loading) return
+
+  setLoading(true)
+
+  // Check if user already has a faction
+  const { data: existing } = await supabase
+    .from('faction_members')
+    .select('id')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (existing) {
+    await loadFaction()
+    return
   }
+
+  const { data, error } = await supabase
+    .from('factions')
+    .insert({ name: factionName.trim(), created_by: userId })
+    .select()
+    .single()
+
+  if (error) {
+    alert('Failed to create faction: ' + error.message)
+    setLoading(false)
+    return
+  }
+
+  const { error: memberError } = await supabase
+    .from('faction_members')
+    .insert({ faction_id: data.id, user_id: userId, role: 'leader' })
+
+  if (memberError) {
+    // If member insert fails, delete the faction to avoid ghost
+    await supabase.from('factions').delete().eq('id', data.id)
+    alert('Failed to create faction. Please try again.')
+    setLoading(false)
+    return
+  }
+
+  await supabase.from('member_history').insert({
+    faction_id: data.id, user_id: userId, action: 'joined'
+  })
+
+  await supabase.from('events').insert({
+    faction_id: data.id, created_by: userId, type: 'member',
+    title: '🏴 Faction Created',
+    description: `${factionName.trim()} was founded`
+  })
+
+  setFaction(data)
+  setMemberRole('leader')
+  setLoading(false)
+}
 
   async function startFresh(label) {
     if (!faction) return
@@ -192,9 +234,9 @@ export default function Dashboard({ session }) {
           onKeyDown={e => e.key === 'Enter' && createFaction()}
           autoFocus
         />
-        <button className="btn btn-green" onClick={createFaction} disabled={!factionName.trim()}>
-          Create Faction
-        </button>
+        <button className="btn btn-green" onClick={createFaction} disabled={!factionName.trim() || loading}>
+  {loading ? 'Creating...' : 'Create Faction'}
+</button>
         <div style={{ borderTop:'1px solid var(--border)', paddingTop:'16px' }}>
           <p style={{ color:'var(--muted)', fontSize:'13px', marginBottom:'10px' }}>Or browse recruiting factions</p>
           <button className="btn btn-ghost" style={{ fontSize:'13px' }} onClick={() => navigate('/join-requests')}>
