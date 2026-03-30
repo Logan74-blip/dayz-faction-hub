@@ -1,7 +1,6 @@
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../supabaseClient'
-import { LayoutDashboard, Map, Sword, ShoppingBag, Shield, Globe, Settings, Bell, LogOut, ChevronDown, Flame, MessageSquare, Network, Calendar, Trophy, Swords, UserPlus, Star, Coins, Package, Target, Megaphone, Activity, Palette, Menu, X, Archive } from 'lucide-react'
 import { LayoutDashboard, Map, Sword, ShoppingBag, Shield, Globe, Settings, Bell, LogOut, ChevronDown, Flame, MessageSquare, Network, Calendar, Trophy, Swords, UserPlus, Star, Coins, Package, Target, Megaphone, Activity, Palette, Menu, X, Archive, HelpCircle } from 'lucide-react'
 
 const NAV_GROUPS = [
@@ -96,8 +95,7 @@ export default function Navbar({ session }) {
   }, [])
 
   useEffect(() => {
-    function handleClick(e) {
-      if (!bellRef.current?.contains(e.target) && !navRef.current?.contains(e.target)) {
+    function handleClick(e) {if (!bellRef.current?.contains(e.target) && !navRef.current?.contains(e.target)) {
         setShowBell(false)
         setOpenGroup(null)
       }
