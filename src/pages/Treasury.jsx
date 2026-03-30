@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { useRole } from '../hooks/useRole'
 import { Plus, TrendingUp, TrendingDown, Package, AlertTriangle, ArrowLeft, X } from 'lucide-react'
-import { useToast } from '../hooks/useToast.jsx'
+import { useToast } from '../hooks/useToast'
 
 const CATEGORIES = ['Weapons', 'Ammo', 'Medical', 'Food & Water', 'Vehicles', 'Base Materials', 'Currency', 'Other']
 const SORT_OPTIONS = [
