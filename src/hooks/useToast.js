@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { createElement } from 'react'
 
 export function useToast() {
   const [toasts, setToasts] = useState([])
@@ -14,17 +15,16 @@ export function useToast() {
   const info = useCallback((msg) => toast(msg, 'info'), [toast])
   const warning = useCallback((msg) => toast(msg, 'warning'), [toast])
 
+  const icons = { success:'✅', error:'❌', warning:'⚠️', info:'ℹ️' }
+
   function ToastContainer() {
-    const icons = { success:'✅', error:'❌', warning:'⚠️', info:'ℹ️' }
-    return (
-      <div className="toast-container">
-        {toasts.map(t => (
-          <div key={t.id} className={`toast toast-${t.type}`}>
-            <span>{icons[t.type]}</span>
-            <span>{t.message}</span>
-          </div>
-        ))}
-      </div>
+    return createElement('div', { className:'toast-container' },
+      ...toasts.map(t =>
+        createElement('div', { key:t.id, className:`toast toast-${t.type}` },
+          createElement('span', null, icons[t.type]),
+          createElement('span', null, t.message)
+        )
+      )
     )
   }
 
