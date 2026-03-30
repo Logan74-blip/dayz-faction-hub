@@ -35,6 +35,7 @@ import ActivityTracker from './components/ActivityTracker'
 import HubAnnouncements from './pages/HubAnnouncements'
 import FactionLogs from './pages/FactionLogs'
 import DeadFactions from './pages/DeadFactions'
+import Help from './pages/Help'
 
 export default function App() {
   const [session, setSession] = useState(undefined)
@@ -114,6 +115,7 @@ export default function App() {
         <Route path="/hub" element={<ProtectedRoute session={session}><HubAnnouncements session={session} /></ProtectedRoute>} />
         <Route path="/faction-logs" element={<ProtectedRoute session={session}><FactionLogs session={session} /></ProtectedRoute>} />
         <Route path="/dead-factions" element={<ProtectedRoute session={session}><DeadFactions /></ProtectedRoute>} />
+        <Route path="/help" element={<ProtectedRoute session={session}><Help /></ProtectedRoute>} />
       </Routes>
     </>
   )
