@@ -41,7 +41,8 @@ export default function Treasury({ session }) {
       notes: form.notes
     }).select('*, profile:profiles!treasury_created_by_fkey(discord_username, discord_avatar)').single()
     if (!error) {
-      setTransactionssuccess('Item added to stockpile!')(t => [data, ...t])
+      setTransactions(t => [data, ...t])
+      success('Transaction logged!')
       setForm({ item_name:'', quantity:1, category:'Weapons', transaction_type:'deposit', notes:'' })
       setShowForm(false)
       await supabase.from('activity_log').insert({
@@ -55,25 +56,25 @@ export default function Treasury({ session }) {
   }
 
   async function clearTreasury() {
-    if (!faction) return
-    await supabase.from('treasury').deletesuccess('Item removed.')().eq('faction_id', faction.id)
-    await supabase.from('activity_log').insert({
-      faction_id: faction.id,
-      user_id: userId,
-      action_type: 'treasury_clear',
-      description: `Treasury cleared${clearReason.trim() ? `: ${clearReason.trim()}` : ''}`,
-      metadata: { reason: clearReason.trim(), count: transactions.length }
-    })
-    await supabase.from('events').insert({
-      faction_id: faction.id, created_by: userId, type: 'custom',
-      title: '🗑️ Treasury Cleared',
-      description: clearReason.trim() || 'Treasury was cleared by leadership'
-    })
-    setTransactions([])
-    success('Stockpile cleared.')
-    setShowClearModal(false)
-    setClearReason('')
-  }
+  if (!faction) return
+  await supabase.from('treasury').delete().eq('faction_id', faction.id)
+  await supabase.from('activity_log').insert({
+    faction_id: faction.id,
+    user_id: userId,
+    action_type: 'treasury_clear',
+    description: `Treasury cleared${clearReason.trim() ? `: ${clearReason.trim()}` : ''}`,
+    metadata: { reason: clearReason.trim(), count: transactions.length }
+  })
+  await supabase.from('events').insert({
+    faction_id: faction.id, created_by: userId, type: 'custom',
+    title: '🗑️ Treasury Cleared',
+    description: clearReason.trim() || 'Treasury was cleared by leadership'
+  })
+  setTransactions([])
+  success('Treasury cleared.')
+  setShowClearModal(false)
+  setClearReason('')
+}
 
   const stockMap = {}
   transactions.forEach(t => {

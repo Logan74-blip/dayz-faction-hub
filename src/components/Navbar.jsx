@@ -48,7 +48,7 @@ const NAV_GROUPS = [
     { to:'/leaderboard', label:'Leaderboard', icon:Trophy },
     { to:'/join-requests', label:'Join Requests', icon:UserPlus },
     { to:'/achievements', label:'Achievements', icon:Star },
-    { to:'/dead-factions', label:'Dead Factions', icon:Skull },
+    { to:'/dead-factions', label:'Dead Factions', icon:Archive },
   ]
 },
   {

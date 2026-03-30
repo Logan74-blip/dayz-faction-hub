@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { useNavigate } from 'react-router-dom'
-import { Users, Skull } from 'lucide-react'
+import { Users, AlertTriangle } from 'lucide-react'
 
 export default function DeadFactions() {
   const [factions, setFactions] = useState([])
@@ -94,7 +94,7 @@ export default function DeadFactions() {
                   Created {new Date(f.created_at).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })}
                 </div>
               </div>
-              <Skull size={20} color="var(--red)" style={{ flexShrink:0, opacity:0.5 }} />
+              <AlertTriangle size={20} color="var(--red)" style={{ flexShrink:0, opacity:0.5 }} />
             </div>
           ))}
         </div>
