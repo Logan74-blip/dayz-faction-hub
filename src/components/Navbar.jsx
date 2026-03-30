@@ -367,22 +367,22 @@ export default function Navbar({ session }) {
           padding:'16px', display:'flex', flexDirection:'column', gap:'4px',
           borderTop:'1px solid var(--border)'
         }}>
-          {/* User info + logout */}
-          <div style={{ display:'flex', flexDirection:'column', gap:'8px', padding:'12px', background:'var(--bg)', borderRadius:'8px', marginBottom:'8px' }}>
-            <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
-              {avatar
-                ? <img src={avatar} style={{ width:40, height:40, borderRadius:'50%', border:'1px solid var(--border)', flexShrink:0 }} />
-                : <div style={{ width:40, height:40, borderRadius:'50%', background:'var(--border)', flexShrink:0 }} />
-              }
-              <div style={{ flex:1 }}>
-                <div style={{ fontWeight:700, fontSize:'15px' }}>{name}</div>
-                <div style={{ fontSize:'12px', color:'var(--muted)' }}>Discord Account</div>
-              </div>
-            </div>
-            <button onClick={logout} className="btn btn-ghost" style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', fontSize:'13px', padding:'8px', color:'var(--red)', borderColor:'#b91c1c44', width:'100%' }}>
-              <LogOut size={14} /> Sign Out
-            </button>
-          </div>
+{/* User info + logout */}
+<div style={{ display:'flex', flexDirection:'column', gap:'8px', padding:'12px', background:'var(--bg)', borderRadius:'8px', marginBottom:'8px' }}>
+  <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
+    {avatar
+      ? <img src={avatar} style={{ width:40, height:40, borderRadius:'50%', border:'1px solid var(--border)', flexShrink:0 }} />
+      : <div style={{ width:40, height:40, borderRadius:'50%', background:'var(--border)', flexShrink:0 }} />
+    }
+    <div style={{ flex:1 }}>
+      <div style={{ fontWeight:700, fontSize:'15px' }}>{name}</div>
+      <div style={{ fontSize:'12px', color:'var(--muted)' }}>Discord Account</div>
+    </div>
+  </div>
+  <button onClick={logout} className="btn btn-ghost" style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', fontSize:'13px', padding:'8px', color:'var(--red)', borderColor:'#b91c1c44', width:'100%' }}>
+    <LogOut size={14} /> Sign Out
+  </button>
+</div>
 
           {/* Nav links */}
           {NAV_GROUPS.map(group => {
@@ -421,7 +421,12 @@ export default function Navbar({ session }) {
                 ))}
               </div>
             )
-          })}
+          })}{/* Sign out — bottom of mobile menu */}
+          <div style={{ marginTop:'8px', paddingTop:'12px', borderTop:'1px solid var(--border)' }}>
+            <button onClick={logout} className="btn btn-ghost" style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', fontSize:'13px', padding:'10px', color:'var(--red)', borderColor:'#b91c1c44', width:'100%' }}>
+              <LogOut size={14} /> Sign Out
+            </button>
+          </div>
         </div>
       )}
     </>
