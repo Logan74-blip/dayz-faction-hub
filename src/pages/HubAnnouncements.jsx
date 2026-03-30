@@ -22,9 +22,8 @@ export default function HubAnnouncements({ session }) {
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({ title:'', body:'', type:'update' })
   const [saving, setSaving] = useState(false)
-  const userId = session.user.id
   const OWNER_ID = 'fcc3b272-3d4c-480f-ab10-2474f3a0372f'
-
+const isOwner = userId === OWNER_ID
   useEffect(() => { loadAll() }, [])
 
   async function loadAll() {
