@@ -21,6 +21,7 @@ const commands = [
   new SlashCommandBuilder().setName('resources').setDescription('Check stockpile summary'),
   new SlashCommandBuilder().setName('rsvp').setDescription('RSVP to the next upcoming raid'),
   new SlashCommandBuilder().setName('leaderboard').setDescription('See server leaderboard'),
+  new SlashCommandBuilder().setName('wipe').setDescription('Check the next server wipe countdown'),
 ].map(c => c.toJSON())
 
 async function getFactionAndUser(discordUserId) {
