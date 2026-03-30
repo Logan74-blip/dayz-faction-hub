@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { useRole } from '../hooks/useRole'
-import { Plus, Calendar, Trash2, Clock } from 'lucide-react'
+import { Plus, Calendar, Trash2, Clock, AlertTriangle } from 'lucide-react'
 
 const EVENT_TYPES = [
   { value:'wipe', label:'🔄 Server Wipe', color:'var(--red)' },
@@ -11,11 +11,73 @@ const EVENT_TYPES = [
   { value:'general', label:'📢 General Event', color:'var(--green)' },
 ]
 
+function useCountdown(targetDate) {
+  const [timeLeft, setTimeLeft] = useState({})
+  useEffect(() => {
+    function calc() {
+      const diff = new Date(targetDate) - new Date()
+      if (diff <= 0) return setTimeLeft({ expired: true })
+      setTimeLeft({
+        days: Math.floor(diff / (1000*60*60*24)),
+        hours: Math.floor((diff % (1000*60*60*24)) / (1000*60*60)),
+        mins: Math.floor((diff % (1000*60*60)) / (1000*60)),
+        secs: Math.floor((diff % (1000*60)) / 1000),
+      })
+    }
+    calc()
+    const t = setInterval(calc, 1000)
+    return () => clearInterval(t)
+  }, [targetDate])
+  return timeLeft
+}
+
+function WipeCountdown({ wipeEvent }) {
+  const t = useCountdown(wipeEvent.scheduled_at)
+  if (t.expired) return (
+    <div className="card" style={{ borderColor:'var(--red)', background:'#450a0a22', textAlign:'center', padding:'20px' }}>
+      <div style={{ fontSize:'24px', marginBottom:'8px' }}>🔄</div>
+      <div style={{ fontFamily:'Share Tech Mono', fontSize:'18px', color:'var(--red)' }}>SERVER WIPE IN PROGRESS</div>
+      <div style={{ fontSize:'13px', color:'var(--muted)', marginTop:'4px' }}>{wipeEvent.title}</div>
+    </div>
+  )
+  return (
+    <div className="card" style={{ borderColor:'var(--red)', background:'#450a0a22', display:'flex', flexDirection:'column', gap:'12px' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+        <AlertTriangle size={18} color="var(--red)" />
+        <div>
+          <div style={{ fontFamily:'Share Tech Mono', fontSize:'14px', color:'var(--red)', letterSpacing:'0.1em' }}>🔄 SERVER WIPE COUNTDOWN</div>
+          <div style={{ fontSize:'12px', color:'var(--muted)', marginTop:'2px' }}>{wipeEvent.title} — {new Date(wipeEvent.scheduled_at).toLocaleString()}</div>
+        </div>
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:'8px', textAlign:'center' }}>
+        {[
+          { label:'DAYS', value: t.days },
+          { label:'HOURS', value: t.hours },
+          { label:'MINS', value: t.mins },
+          { label:'SECS', value: t.secs },
+        ].map(({ label, value }) => (
+          <div key={label} style={{ background:'#450a0a', border:'1px solid var(--red)', borderRadius:'8px', padding:'12px 8px' }}>
+            <div style={{ fontFamily:'Share Tech Mono', fontSize:'32px', fontWeight:700, color:'var(--red)', lineHeight:1 }}>
+              {String(value).padStart(2, '0')}
+            </div>
+            <div style={{ fontSize:'10px', color:'var(--muted)', marginTop:'4px', letterSpacing:'0.1em' }}>{label}</div>
+          </div>
+        ))}
+      </div>
+      {wipeEvent.description && (
+        <p style={{ fontSize:'13px', color:'var(--muted)', borderTop:'1px solid var(--border)', paddingTop:'10px' }}>
+          {wipeEvent.description}
+        </p>
+      )}
+    </div>
+  )
+}
+
 export default function ServerCalendar({ session }) {
   const { faction, role } = useRole(session.user.id)
   const [events, setEvents] = useState([])
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ title:'', description:'', event_type:'general', scheduled_at:'' })
+  const [form, setForm] = useState({ title:'', description:'', event_type:'wipe', scheduled_at:'' })
   const [filter, setFilter] = useState('all')
   const userId = session.user.id
   const canPost = role === 'leader' || role === 'co-leader'
@@ -44,7 +106,7 @@ export default function ServerCalendar({ session }) {
     }).select('*, faction:factions(name, tag, primary_color)').single()
     if (!error) {
       setEvents(e => [...e, data].sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at)))
-      setForm({ title:'', description:'', event_type:'general', scheduled_at:'' })
+      setForm({ title:'', description:'', event_type:'wipe', scheduled_at:'' })
       setShowForm(false)
     } else {
       alert('Failed to post event: ' + error.message)
@@ -63,9 +125,9 @@ export default function ServerCalendar({ session }) {
   function getTimeUntil(date) {
     const diff = new Date(date) - new Date()
     if (diff < 0) return null
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-    const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+    const days = Math.floor(diff / (1000*60*60*24))
+    const hours = Math.floor((diff % (1000*60*60*24)) / (1000*60*60))
+    const mins = Math.floor((diff % (1000*60*60)) / (1000*60))
     if (days > 0) return `in ${days}d ${hours}h`
     if (hours > 0) return `in ${hours}h ${mins}m`
     return `in ${mins}m`
@@ -74,6 +136,7 @@ export default function ServerCalendar({ session }) {
   const upcoming = events.filter(e => new Date(e.scheduled_at) >= new Date())
   const past = events.filter(e => new Date(e.scheduled_at) < new Date())
   const filtered = filter === 'all' ? upcoming : upcoming.filter(e => e.event_type === filter)
+  const nextWipe = upcoming.find(e => e.event_type === 'wipe')
 
   if (!faction) return (
     <div style={{ padding:'80px', textAlign:'center', color:'var(--muted)' }}>
@@ -87,9 +150,7 @@ export default function ServerCalendar({ session }) {
         <div>
           <h1 style={{ fontFamily:'Share Tech Mono', fontSize:'24px', color:'var(--green)' }}>SERVER EVENTS</h1>
           <p style={{ color:'var(--muted)', marginTop:'4px' }}>
-            {faction?.server_name
-              ? `Community events for ${faction.server_name}`
-              : 'Set your server name in Settings to see events'}
+            {faction?.server_name ? `Community events for ${faction.server_name}` : 'Set your server name in Settings to see events'}
           </p>
         </div>
         {canPost && faction?.server_name && (
@@ -108,6 +169,9 @@ export default function ServerCalendar({ session }) {
 
       {faction?.server_name && (
         <>
+          {/* Wipe countdown — always shown at top if exists */}
+          {nextWipe && <WipeCountdown wipeEvent={nextWipe} />}
+
           {showForm && canPost && (
             <div className="card" style={{ display:'flex', flexDirection:'column', gap:'12px', borderColor:'var(--green-dim)' }}>
               <h3 style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'14px' }}>NEW SERVER EVENT</h3>
@@ -148,7 +212,6 @@ export default function ServerCalendar({ session }) {
             })}
           </div>
 
-          {/* Upcoming events */}
           {filtered.length > 0 && (
             <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
               <h3 style={{ fontFamily:'Share Tech Mono', color:'var(--green)', fontSize:'13px', letterSpacing:'0.1em' }}>
@@ -158,14 +221,15 @@ export default function ServerCalendar({ session }) {
                 const meta = getTypeMeta(e.event_type)
                 const timeUntil = getTimeUntil(e.scheduled_at)
                 const isOwn = e.faction_id === faction.id
+                const isWipe = e.event_type === 'wipe'
                 return (
-                  <div key={e.id} className="card" style={{ display:'flex', gap:'14px', borderLeft:`3px solid ${meta.color}` }}>
+                  <div key={e.id} className="card" style={{ display:'flex', gap:'14px', borderLeft:`3px solid ${meta.color}`, background: isWipe ? '#450a0a11' : 'var(--surface)' }}>
                     <div style={{ flex:1 }}>
                       <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap', marginBottom:'4px' }}>
                         <span style={{ fontWeight:700, fontSize:'15px' }}>{e.title}</span>
                         <span style={{ fontSize:'12px', color:meta.color, border:`1px solid ${meta.color}44`, padding:'1px 8px', borderRadius:'999px' }}>{meta.label}</span>
                         {timeUntil && (
-                          <span style={{ fontSize:'11px', color:'var(--green)', display:'flex', alignItems:'center', gap:'3px' }}>
+                          <span style={{ fontSize:'11px', color: isWipe ? 'var(--red)' : 'var(--green)', display:'flex', alignItems:'center', gap:'3px' }}>
                             <Clock size={10} /> {timeUntil}
                           </span>
                         )}
@@ -173,15 +237,12 @@ export default function ServerCalendar({ session }) {
                       <div style={{ fontSize:'12px', color:'var(--muted)', display:'flex', gap:'12px', flexWrap:'wrap' }}>
                         <span>📅 {new Date(e.scheduled_at).toLocaleString()}</span>
                         <span style={{ display:'flex', alignItems:'center', gap:'4px' }}>
-                          Posted by
-                          <span style={{ color: e.faction?.primary_color || 'var(--green)', fontWeight:600 }}>
+                          Posted by <span style={{ color: e.faction?.primary_color || 'var(--green)', fontWeight:600 }}>
                             {e.faction?.tag ? `${e.faction.tag} ` : ''}{e.faction?.name}
                           </span>
                         </span>
                       </div>
-                      {e.description && (
-                        <p style={{ fontSize:'13px', color:'var(--text)', marginTop:'8px', lineHeight:1.5 }}>{e.description}</p>
-                      )}
+                      {e.description && <p style={{ fontSize:'13px', color:'var(--text)', marginTop:'8px', lineHeight:1.5 }}>{e.description}</p>}
                     </div>
                     {(isOwn || canPost) && (
                       <button onClick={() => deleteEvent(e.id)} className="btn btn-ghost" style={{ padding:'6px', alignSelf:'flex-start', flexShrink:0 }}>
@@ -207,7 +268,6 @@ export default function ServerCalendar({ session }) {
             </div>
           )}
 
-          {/* Past events */}
           {past.length > 0 && (
             <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
               <h3 style={{ fontFamily:'Share Tech Mono', color:'var(--muted)', fontSize:'13px', letterSpacing:'0.1em' }}>
