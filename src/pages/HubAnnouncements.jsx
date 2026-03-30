@@ -3,7 +3,7 @@ import { supabase } from '../supabaseClient'
 import { Pin, Edit2, Trash2, Plus, X, Check, Heart } from 'lucide-react'
 
 // Your account ID — only this account can post/edit/delete
-const OWNER_ID = 'f05c7a02-8446-46dc-bec3-d9a9d10fa4bf'
+const CIDMAN_ID = 'fcc3b272-3d4c-480f-ab10-2474f3a0372f'
 
 const TYPE_OPTIONS = [
   { value:'update', label:'🔧 Update', color:'#60a5fa' },
