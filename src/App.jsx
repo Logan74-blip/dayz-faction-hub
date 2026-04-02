@@ -36,11 +36,15 @@ import HubAnnouncements from './pages/HubAnnouncements'
 import FactionLogs from './pages/FactionLogs'
 import DeadFactions from './pages/DeadFactions'
 import Help from './pages/Help'
+import CommandCenter from './pages/CommandCenter'
+import Banned from './pages/Banned'
 
 export default function App() {
   const [session, setSession] = useState(undefined)
   const [profile, setProfile] = useState(null)
   const [checkingProfile, setCheckingProfile] = useState(false)
+  const [isBanned, setIsBanned] = useState(false)
+const [banReason, setBanReason] = useState('')
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
@@ -52,11 +56,20 @@ export default function App() {
   }, [])
 
   async function loadProfile(userId) {
-    setCheckingProfile(true)
-    const { data } = await supabase.from('profiles').select('onboarding_done').eq('id', userId).maybeSingle()
-    setProfile(data)
-    setCheckingProfile(false)
+  setCheckingProfile(true)
+  const { data } = await supabase
+    .from('profiles')
+    .select('onboarding_done, is_banned, ban_reason')
+    .eq('id', userId)
+    .maybeSingle()
+  setProfile(data)
+  if (isBanned) return <Banned reason={banReason} />
+  if (data?.is_banned) {
+    setIsBanned(true)
+    setBanReason(data.ban_reason || '')
   }
+  setCheckingProfile(false)
+}
 
   if (session === undefined || (session && checkingProfile)) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', color:'var(--green)', fontFamily:'Share Tech Mono', flexDirection:'column', gap:'16px' }}>
@@ -116,6 +129,7 @@ export default function App() {
         <Route path="/faction-logs" element={<ProtectedRoute session={session}><FactionLogs session={session} /></ProtectedRoute>} />
         <Route path="/help" element={<ProtectedRoute session={session}><Help /></ProtectedRoute>} />
         <Route path="/dead-factions" element={<ProtectedRoute session={session}><DeadFactions /></ProtectedRoute>} />
+        <Route path="/command-center" element={<ProtectedRoute session={session}><CommandCenter session={session} /></ProtectedRoute>} />
       </Routes>
     </>
   )

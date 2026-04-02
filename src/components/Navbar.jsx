@@ -1,7 +1,7 @@
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../supabaseClient'
-import { LayoutDashboard, Map, Sword, ShoppingBag, Shield, Globe, Settings, Bell, LogOut, ChevronDown, Flame, MessageSquare, Network, Calendar, Trophy, Swords, UserPlus, Star, Coins, Package, Target, Megaphone, Activity, Palette, Menu, X, Archive, HelpCircle } from 'lucide-react'
+import { LayoutDashboard, Map, Sword, ShoppingBag, Shield, Globe, Settings, Bell, LogOut, ChevronDown, Flame, MessageSquare, Network, Calendar, Trophy, Swords, UserPlus, Star, Coins, Package, Target, Megaphone, Activity, Palette, Menu, X, Archive, HelpCircle, Terminal } from 'lucide-react'
 
 const NAV_GROUPS = [
   { label:'Home', icon:LayoutDashboard, to:'/', single:true },
@@ -76,6 +76,19 @@ export default function Navbar({ session }) {
   const bellRef = useRef(null)
   const navRef = useRef(null)
   const userId = session.user.id
+  const [isOwner, setIsOwner] = useState(false)
+
+useEffect(() => {
+  async function checkAdmin() {
+    const { data } = await supabase
+      .from('server_admins')
+      .select('id')
+      .eq('user_id', userId)
+      .maybeSingle()
+    if (data) setIsOwner(true)
+  }
+  checkAdmin()
+}, [userId])
 
   useEffect(() => {
     loadNotifications()
@@ -271,6 +284,19 @@ export default function Navbar({ session }) {
 
         {/* Right side */}
         <div style={{ display:'flex', alignItems:'center', gap:'8px', flexShrink:0 }}>
+          {isOwner && (
+  <button
+    onClick={() => navigate('/command-center')}
+    title="Command Center"
+    style={{
+      background: 'transparent', border: 'none',
+      color: 'var(--green)', cursor: 'pointer',
+      padding: '6px', display: 'flex', alignItems: 'center'
+    }}
+  >
+    <Terminal size={17} />
+  </button>
+)}
 
           {/* Bell */}
           <div ref={bellRef} style={{ position:'relative' }}>
