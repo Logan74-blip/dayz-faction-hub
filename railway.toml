@@ -1,6 +1,8 @@
 [build]
-buildCommand = "echo ready"
+buildCommand = "npm install"
 
 [deploy]
 startCommand = "node bot.js"
 restartPolicyType = "always"
+healthcheckPath = "/"
+healthcheckTimeout = 30
