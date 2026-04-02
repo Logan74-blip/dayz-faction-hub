@@ -1,0 +1,34 @@
+{
+  "name": "faction-hub-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-03-07",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "kv_namespaces": [
+    {
+      "binding": "SESSION_CACHE",
+      "id": "f606be6e77fd4d07913860d5bc7ae46b",
+      "preview_id": "5816dbbee4d54384b8382fa872fd8c47"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "FACTION_ROOM",
+        "class_name": "FactionRoom"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["FactionRoom"]
+    }
+  ],
+  "vars": {
+    "SUPABASE_URL": "https://zkyhfchwwwbsvwceeqdi.supabase.co"
+  }
+}
